@@ -29,7 +29,8 @@ def load_db():
         "required_channels": [],
         "contests": {"voice": {}, "referral": {}},
         "stats": {"total_contests": 0},
-        "ads": {"text": "", "active": False}
+        "ads": {"text": "", "active": False},
+        "referred_users": {}
     }
 
 def save_db(data):
@@ -49,6 +50,15 @@ async def check_subscription(client, user_id):
         except:
             return False
     return True
+
+async def is_channel_member(client, channel_id, user_id):
+    try:
+        member = await client.get_chat_member(int(channel_id), user_id)
+        if member.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
+            return False
+        return True
+    except:
+        return False
 
 def get_sub_keyboard():
     btns = []
@@ -79,9 +89,21 @@ async def start_private(client, message: Message):
         }
         save_db(db)
     
+    if message.from_user.id in ADMIN_IDS:
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📊 Statistika", callback_data="admin_stats")],
+            [InlineKeyboardButton("📢 Majburiy kanallar", callback_data="admin_channels")],
+            [InlineKeyboardButton("📝 Reklama", callback_data="admin_ads")],
+            [InlineKeyboardButton("👥 Foydalanuvchilar", callback_data="admin_users")],
+            [InlineKeyboardButton("📺 Kanallar royxati", callback_data="admin_ch_list")],
+            [InlineKeyboardButton("👥 Guruhlar royxati", callback_data="admin_gr_list")]
+        ])
+        await message.reply("🔐 ADMIN PANEL\n\nQuyidan kerakli bolimni tanlang:", reply_markup=keyboard)
+        return
+    
     if not await check_subscription(client, message.from_user.id):
         await message.reply(
-            "❌ Botdan foydalanish uchun quyidagi kanallarga obuna bo'ling:",
+            "❌ Botdan foydalanish uchun quyidagi kanallarga obuna boling:",
             reply_markup=get_sub_keyboard()
         )
         return
@@ -186,6 +208,10 @@ async def join_voice(client, callback: CallbackQuery):
         await callback.answer("❌ Konkurs topilmadi!", show_alert=True)
         return
     
+    if not await is_channel_member(client, ch_id, user.id):
+        await callback.answer("❌ Avval kanalga azo boling!", show_alert=True)
+        return
+    
     contest = db["contests"]["voice"][ch_id]
     if uid not in contest["participants"]:
         contest["participants"][uid] = {
@@ -233,6 +259,10 @@ async def vote_voice(client, callback: CallbackQuery):
         await callback.answer("❌ Konkurs topilmadi!", show_alert=True)
         return
     
+    if not await is_channel_member(client, ch_id, callback.from_user.id):
+        await callback.answer("❌ Ovoz berish uchun kanalga azo boling!", show_alert=True)
+        return
+    
     if voter_id in contest.get("voters", {}):
         await callback.answer("❌ Siz allaqachon ovoz bergansiz!", show_alert=True)
         return
@@ -272,6 +302,10 @@ async def join_ref(client, callback: CallbackQuery):
         await callback.answer("❌ Konkurs topilmadi!", show_alert=True)
         return
     
+    if not await is_channel_member(client, ch_id, user.id):
+        await callback.answer("❌ Avval kanalga azo boling!", show_alert=True)
+        return
+    
     contest = db["contests"]["referral"][ch_id]
     if uid not in contest["participants"]:
         contest["participants"][uid] = {
@@ -282,13 +316,13 @@ async def join_ref(client, callback: CallbackQuery):
         }
         save_db(db)
     
-    ref_link = f"https://t.me/{bot.username}?start=ref_{uid}"
-    await callback.answer(f"📎 Sizning havolangiz:\n{ref_link}", show_alert=True)
     await update_ref_keyboard(client, callback.message, ch_id)
+    await callback.answer("✅ Royxatga qoshildingiz!")
 
 async def update_ref_keyboard(client, message, ch_id):
     contest = db["contests"]["referral"].get(ch_id, {})
     parts = contest.get("participants", {})
+    bot = await client.get_me()
     
     buttons = []
     row = []
@@ -296,7 +330,7 @@ async def update_ref_keyboard(client, message, ch_id):
         count = data.get("count", 0)
         name = data.get("username", "User")[:15]
         btn_text = f"@{name} [{count}]" if count > 0 else f"@{name}"
-        row.append(InlineKeyboardButton(btn_text, callback_data=f"rinfo_{ch_id}_{uid}"))
+        row.append(InlineKeyboardButton(btn_text, callback_data=f"rcopy_{ch_id}_{uid}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -310,20 +344,33 @@ async def update_ref_keyboard(client, message, ch_id):
     except:
         pass
 
-@app.on_callback_query(filters.regex(r"^rinfo_(-?\d+)_(\d+)$"))
-async def ref_info(client, callback: CallbackQuery):
+@app.on_callback_query(filters.regex(r"^rcopy_(-?\d+)_(\d+)$"))
+async def copy_ref_link(client, callback: CallbackQuery):
     ch_id = callback.matches[0].group(1)
     uid = callback.matches[0].group(2)
     bot = await client.get_me()
+    
+    if str(callback.from_user.id) != uid:
+        await callback.answer("❌ Bu sizning havolangiz emas!", show_alert=True)
+        return
+    
     ref_link = f"https://t.me/{bot.username}?start=ref_{uid}"
-    await callback.answer(f"📎 Havola: {ref_link}", show_alert=True)
+    
+    keyboard = InlineKeyboardMarkup([
+        [InlineKeyboardButton("📋 Havolani nusxalash", copy_text=ref_link)]
+    ])
+    
+    await callback.message.reply(
+        f"📎 Sizning referal havolangiz:\n\n{ref_link}",
+        reply_markup=keyboard
+    )
+    await callback.answer()
 
 @app.on_chat_member_updated()
 async def member_update(client, update: ChatMemberUpdated):
     ch_id = str(update.chat.id)
     user_id = str(update.from_user.id)
     
-    old = update.old_chat_member
     new = update.new_chat_member
     
     if new and new.status in [ChatMemberStatus.LEFT, ChatMemberStatus.BANNED]:
@@ -331,34 +378,24 @@ async def member_update(client, update: ChatMemberUpdated):
             contest = db["contests"]["voice"][ch_id]
             if user_id in contest.get("participants", {}):
                 del contest["participants"][user_id]
-            for voter, target in list(contest.get("voters", {}).items()):
-                if target == user_id:
-                    del contest["voters"][voter]
+            
+            voted_for = contest.get("voters", {}).get(user_id)
+            if voted_for and voted_for in contest.get("participants", {}):
+                contest["participants"][voted_for]["votes"] = max(0, contest["participants"][voted_for]["votes"] - 1)
+                del contest["voters"][user_id]
+            
             save_db(db)
         
         if ch_id in db["contests"]["referral"]:
             contest = db["contests"]["referral"][ch_id]
+            if user_id in contest.get("participants", {}):
+                del contest["participants"][user_id]
+            
             for uid, data in contest.get("participants", {}).items():
                 if user_id in data.get("refs", []):
                     data["refs"].remove(user_id)
                     data["count"] = max(0, data["count"] - 1)
             save_db(db)
-
-@app.on_message(filters.command("admin") & filters.private)
-async def admin_panel(client, message: Message):
-    if message.from_user.id not in ADMIN_IDS:
-        await message.reply("❌ Sizda admin huquqi yoq!")
-        return
-    
-    keyboard = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Statistika", callback_data="admin_stats")],
-        [InlineKeyboardButton("📢 Majburiy kanallar", callback_data="admin_channels")],
-        [InlineKeyboardButton("📝 Reklama", callback_data="admin_ads")],
-        [InlineKeyboardButton("👥 Foydalanuvchilar", callback_data="admin_users")],
-        [InlineKeyboardButton("📺 Kanallar royxati", callback_data="admin_ch_list")],
-        [InlineKeyboardButton("👥 Guruhlar royxati", callback_data="admin_gr_list")]
-    ])
-    await message.reply("🔐 ADMIN PANEL\n\nQuyidan kerakli bolimni tanlang:", reply_markup=keyboard)
 
 @app.on_callback_query(filters.regex("^admin_stats$"))
 async def admin_stats(client, callback: CallbackQuery):
