@@ -19,7 +19,7 @@ app = Client("video_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
 DATA_FILE = "bot_data.json"
 
-URL_REGEX = r'(https?://(?:www\.)?(?:instagram\.com|youtube\.com|youtu\.be|tiktok\.com|twitter\.com|x\.com|facebook\.com|fb\.watch|vimeo\.com|dailymotion\.com|twitch\.tv|reddit\.com|pinterest\.com)[^\s]+)'
+URL_REGEX = r'(https?://(?:www\.)?(?:instagram\.com|youtube\.com|youtu\.be|tiktok\.com|twitter\.com|x\.com|facebook\.com|fb\.watch|vimeo\.com|dailymotion\.com|twitch\.tv|reddit\.com|pinterest\.com|vm\.tiktok\.com)[^\s]+)'
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -96,28 +96,77 @@ def get_subscribe_buttons():
     buttons.append([InlineKeyboardButton("✅ Tekshirish", callback_data="check_sub")])
     return InlineKeyboardMarkup(buttons)
 
-async def download_video(url: str) -> str | None:
-    ydl_opts = {
-        'format': 'best[filesize<50M]/best',
+def get_ydl_opts(url):
+    is_instagram = "instagram.com" in url
+    is_tiktok = "tiktok.com" in url
+    
+    cookies_file = "cookies.txt"
+    
+    opts = {
+        'format': 'best[ext=mp4]/best',
         'outtmpl': 'downloads/%(id)s.%(ext)s',
         'quiet': True,
         'no_warnings': True,
         'extract_flat': False,
-        'socket_timeout': 30,
-        'retries': 3,
+        'socket_timeout': 60,
+        'retries': 5,
         'nocheckcertificate': True,
+        'ignoreerrors': False,
+        'no_color': True,
+        'geo_bypass': True,
+        'geo_bypass_country': 'US',
+        'extractor_retries': 3,
+        'file_access_retries': 3,
+        'fragment_retries': 10,
         'http_headers': {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Cache-Control': 'max-age=0',
         }
     }
+    
+    if is_instagram:
+        opts['http_headers']['Referer'] = 'https://www.instagram.com/'
+        opts['http_headers']['Origin'] = 'https://www.instagram.com'
+        opts['http_headers']['X-IG-App-ID'] = '936619743392459'
+        if os.path.exists(cookies_file):
+            opts['cookiefile'] = cookies_file
+    
+    if is_tiktok:
+        opts['http_headers']['Referer'] = 'https://www.tiktok.com/'
+        if os.path.exists(cookies_file):
+            opts['cookiefile'] = cookies_file
+    
+    return opts
+
+async def download_video(url: str) -> str | None:
     os.makedirs('downloads', exist_ok=True)
+    
+    ydl_opts = get_ydl_opts(url)
+    
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             if info:
-                return ydl.prepare_filename(info)
+                filename = ydl.prepare_filename(info)
+                if os.path.exists(filename):
+                    return filename
+                
+                for ext in ['mp4', 'webm', 'mkv', 'mov']:
+                    alt_file = filename.rsplit('.', 1)[0] + '.' + ext
+                    if os.path.exists(alt_file):
+                        return alt_file
     except Exception as e:
         print(f"Download error: {e}")
+    
     return None
 
 @app.on_message(filters.command("start") & filters.private)
@@ -353,10 +402,10 @@ async def handle_message(client: Client, msg: Message):
                 await status_msg.edit_text(
                     "⚠️ Video yuklab bo'lmadi\n\n"
                     "Sabablari:\n"
-                    "• Havola noto'g'ri yoki eskirgan\n"
-                    "• Video yopiq akkauntda\n"
-                    "• Platforma cheklovlari\n\n"
-                    "🔄 Boshqa havola yuboring!"
+                    "- Havola noto'g'ri yoki eskirgan\n"
+                    "- Video yopiq akkauntda\n"
+                    "- Platforma cheklovlari\n\n"
+                    "💡 Maslahat: Reels havolasini to'g'ridan-to'g'ri nusxalang"
                 )
         except Exception as e:
             print(f"Error: {e}")
