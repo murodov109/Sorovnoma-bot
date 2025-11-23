@@ -361,21 +361,22 @@ async def join_ref(client, callback: CallbackQuery):
         }
         save_db(db)
     
-    ref_link = f"https://t.me/{bot.username}?start=ref_{uid}"
-    await callback.answer(f"Havolangiz nusxalandi!\n\n{ref_link}", show_alert=True)
+    await callback.answer("✅ Royxatga qoshildingiz!")
     await update_ref_keyboard(client, callback.message, ch_id)
 
 async def update_ref_keyboard(client, message, ch_id):
     contest = db["contests"]["referral"].get(ch_id, {})
     parts = contest.get("participants", {})
+    bot = await client.get_me()
     
     buttons = []
     row = []
     for uid, data in parts.items():
         count = data.get("count", 0)
         name = data.get("username", "User")[:15]
+        ref_link = f"https://t.me/{bot.username}?start=ref_{uid}"
         btn_text = f"@{name} [{count}]" if count > 0 else f"@{name}"
-        row.append(InlineKeyboardButton(btn_text, url=f"tg://user?id={uid}"))
+        row.append(InlineKeyboardButton(btn_text, callback_data=f"rcopy_{ch_id}_{uid}"))
         if len(row) == 2:
             buttons.append(row)
             row = []
@@ -388,6 +389,16 @@ async def update_ref_keyboard(client, message, ch_id):
         await message.edit_reply_markup(InlineKeyboardMarkup(buttons))
     except:
         pass
+
+@app.on_callback_query(filters.regex(r"^rcopy_(-?\d+)_(\d+)$"))
+async def copy_ref_link(client, callback: CallbackQuery):
+    ch_id = callback.matches[0].group(1)
+    uid = callback.matches[0].group(2)
+    bot = await client.get_me()
+    
+    ref_link = f"https://t.me/{bot.username}?start=ref_{uid}"
+    
+    await callback.answer(f"Havola nusxalandi!\n\n{ref_link}", show_alert=True)
 
 @app.on_chat_member_updated()
 async def member_update(client, update: ChatMemberUpdated):
