@@ -15,7 +15,7 @@ NOTIFY_CHANNEL = os.getenv("NOTIFY_CHANNEL_ID")  # channel id or @username
 
 DB = os.getenv("DB_PATH","bot.db")
 
-EMOJI_MAP = {15:"🐻",25:"🌸",50:"🚀",100:"💎"}
+EMOJI_MAP = {15:"💝",25:"🥀",50:"🚀",100:"🏆"}
 PREMIUM_COST = int(os.getenv("PREMIUM_COST", "250"))
 REF_REWARD = int(os.getenv("REF_REWARD", "3"))
 MIN_WITHDRAW = int(os.getenv("MIN_WITHDRAW", "15"))
