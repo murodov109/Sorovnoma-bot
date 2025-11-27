@@ -456,7 +456,7 @@ async def statistics(client: Client, message: Message):
     text = f"""📊 **Bot statistikasi**\n\n👥 Jami foydalanuvchilar: **{stats['total_users']}**\n🆕 Bugungi yangi: **{stats['today_users']}**\n🔗 Jami referallar: **{stats['total_referrals']}**\n💰 Yechilgan stars: **{stats['total_withdrawn']} ⭐**\n🎁 Premium olganlar: **{stats['premium_users']}**\n📈 Aktiv userlar (7 kun): **{stats['active_users']}**\n\n📅 Oxirgi yangilanish: {stats['last_update']}"""
     await message.reply_text(text)
 
-@app.on_message(filters.regex("🔗 Majburiy kanallar") & filters.private)
+@app.on_message(filters.text("🔗 Majburiy kanallar"))
 async def manage_mandatory(client: Client, message: Message):
     user_id = message.from_user.id
     if not check_admin(user_id):
