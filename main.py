@@ -1,6 +1,5 @@
 import os
 import sqlite3
-import asyncio
 from datetime import datetime
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
@@ -11,23 +10,17 @@ API_ID = int(os.getenv("API_ID"))
 API_HASH = os.getenv("API_HASH")
 BOT_TOKEN = os.getenv("BOT_TOKEN")
 ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS","").split(",") if x.strip()]
-NOTIFY_CHANNEL = os.getenv("NOTIFY_CHANNEL_ID")  # channel id or @username
-
-DB = os.getenv("DB_PATH","bot.db")
-
-EMOJI_MAP = {15:"💝",25:"🥀",50:"🚀",100:"🏆"}
+NOTIFY_CHANNEL = os.getenv("NOTIFY_CHANNEL_ID")
+DB = os.getenv("DB_PATH","/mnt/data/bot.db")
 PREMIUM_COST = int(os.getenv("PREMIUM_COST", "250"))
 REF_REWARD = int(os.getenv("REF_REWARD", "3"))
 MIN_WITHDRAW = int(os.getenv("MIN_WITHDRAW", "15"))
+EMOJI_MAP = {15:"🐻",25:"🌸",50:"🚀",100:"💎"}
 
+os.makedirs(os.path.dirname(DB), exist_ok=True)
 app = Client("bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
-
-def db_connect():
-    conn = sqlite3.connect(DB, check_same_thread=False)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-conn = db_connect()
+conn = sqlite3.connect(DB, check_same_thread=False)
+conn.row_factory = sqlite3.Row
 cur = conn.cursor()
 cur.executescript("""
 CREATE TABLE IF NOT EXISTS users(
@@ -145,10 +138,7 @@ async def start_cmd(client, message):
     rows = cur.fetchall()
     kb = []
     for r in rows:
-        if r["is_zayavka"]:
-            kb.append([InlineKeyboardButton(r["chat_id"], url=r["chat_id"])])
-        else:
-            kb.append([InlineKeyboardButton(r["chat_id"], url=r["chat_id"])])
+        kb.append([InlineKeyboardButton(r["chat_id"], url=r["chat_id"])])
     kb_markup = InlineKeyboardMarkup(kb) if kb else None
     text = "Botga xush kelibsiz. Iltimos, quyidagi kanallarga obuna bo‘ling."
     await message.reply(text, reply_markup=kb_markup)
@@ -166,7 +156,6 @@ async def cb(client, callback_query):
             is_admin = True if r and r["is_admin"]==1 else False
             await callback_query.message.reply("✅ Tasdiqlandi. Asosiy panel.", reply_markup=main_menu_kb(is_admin))
             await callback_query.answer()
-            # process pending referrals for this user (confirm if any)
             cur.execute("SELECT id,referrer FROM referrals WHERE referee=(SELECT id FROM users WHERE tg_id=?) AND status='pending'",(uid,))
             pending = cur.fetchall()
             for p in pending:
@@ -209,23 +198,20 @@ async def cb(client, callback_query):
             cur.execute("UPDATE withdrawals SET status='approved' WHERE id=?",(wid,))
             cur.execute("UPDATE users SET balance = balance - ? WHERE tg_id=?",(r["amount"], r["tg_id"]))
             conn.commit()
-            await callback_query.answer("Tasdiqlandi")
             try:
                 await app.send_message(NOTIFY_CHANNEL, f"✅ Pul yechish tasdiqlandi\nUser: @{callback_query.from_user.username}\nMiqdor: {r['amount']}")
             except: pass
             try:
                 await app.send_message(r["tg_id"], f"✅ Sizning so‘rovingiz tasdiqlandi. Miqdor: {r['amount']}")
             except: pass
+            await callback_query.answer("Tasdiqlandi")
         else:
             cur.execute("UPDATE withdrawals SET status='rejected' WHERE id=?",(wid,))
             conn.commit()
-            await callback_query.answer("Rad etildi")
             try:
                 await app.send_message(r["tg_id"], f"❌ Sizning so‘rovingiz rad etildi. ID: {wid}")
             except: pass
-        return
-    if data.startswith("withdraw_confirm_"):
-        await callback_query.answer()
+            await callback_query.answer("Rad etildi")
         return
 
 @app.on_message(filters.text)
@@ -248,7 +234,7 @@ async def text_handler(client, message):
             await message.reply(f"Sizning havolangiz: {link}")
         return
     if txt=="💳 Stars yechish":
-        await message.reply("Qiymatni tanlang:", reply_markup=withdraw_inline())
+        await message.reply("Qiymatni tanlang:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton(f"{EMOJI_MAP[v]} {v}", callback_data=f"withdraw_{v}") for v in [15,25,50,100]]]))
         return
     if txt=="🎁 Premium olish":
         cur.execute("SELECT balance FROM users WHERE tg_id=?",(uid,))
@@ -281,63 +267,7 @@ async def text_handler(client, message):
         ], resize_keyboard=True)
         await message.reply("Admin panel", reply_markup=kb)
         return
-    if txt=="📣 Reklama yuborish" and is_admin:
-        await message.reply("Reklama matnini yuboring. Bot hamma foydalanuvchilarga yuboradi.")
-        return
-    if txt.startswith("@") and is_admin and txt.startswith("@addchan:"):
-        # helper for quick adding via message like @addchan:@channelname
-        ch = txt.split(":",1)[1].strip()
-        cur.execute("INSERT OR IGNORE INTO channels(chat_id,is_zayavka,title) VALUES(?,?,?)",(ch,0,ch))
-        conn.commit()
-        await message.reply("Kanal qo‘shildi.")
-        return
-    if txt=="🔗 Majburiy kanallar" and is_admin:
-        cur.execute("SELECT chat_id,is_zayavka FROM channels")
-        rows = cur.fetchall()
-        msg = "Kanallar:\n"
-        for r in rows:
-            msg += f"{r['chat_id']} - {'Zayavka' if r['is_zayavka'] else 'Majburiy'}\n"
-        await message.reply(msg)
-        return
-    if txt=="📨 Zayavka kanal qo‘shish" and is_admin:
-        await message.reply("Kanal havolasini yuboring (masalan @channelname). Bot obunani tekshirmaydi, faqat ro‘yxatga qo‘yadi.")
-        app.set_parse_mode(None)
-        return
-    if txt.startswith("@") and is_admin:
-        ch = txt.strip()
-        cur.execute("INSERT OR REPLACE INTO channels(chat_id,title,is_zayavka) VALUES(?,?,?)",(ch,ch,1))
-        conn.commit()
-        await message.reply("Zayavka kanali qo‘shildi.")
-        return
-    if txt=="📊 Statistika" and is_admin:
-        cur.execute("SELECT COUNT(*) as c FROM users")
-        users = cur.fetchone()["c"]
-        cur.execute("SELECT COUNT(*) as c FROM referrals WHERE status='confirmed'")
-        refs = cur.fetchone()["c"]
-        cur.execute("SELECT COUNT(*) as c FROM withdrawals WHERE status='approved'")
-        w = cur.fetchone()["c"]
-        await message.reply(f"Users: {users}\nConfirmed refs: {refs}\nApproved withdrawals: {w}")
-        return
-    if txt=="💵 Yechish so‘rovlari" and is_admin:
-        cur.execute("SELECT withdrawals.id,users.username,withdrawals.amount,withdrawals.status,withdrawals.created_at FROM withdrawals JOIN users ON withdrawals.user_id=users.id WHERE withdrawals.status='pending'")
-        rows = cur.fetchall()
-        for r in rows:
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_w_{r['id']}"), InlineKeyboardButton("❌ Rad etish", callback_data=f"reject_w_{r['id']}")]])
-            await message.reply(f"ID:{r['id']} @{r['username']} {r['amount']}", reply_markup=kb)
-        return
-    if txt=="🎁 Premium so‘rovlari" and is_admin:
-        cur.execute("SELECT pr.id,users.username,pr.amount,pr.status FROM premium_requests pr JOIN users ON pr.user_id=users.id WHERE pr.status='pending'")
-        rows = cur.fetchall()
-        for r in rows:
-            kb = InlineKeyboardMarkup([[InlineKeyboardButton("✅ Tasdiqlash", callback_data=f"approve_p_{r['id']}"), InlineKeyboardButton("❌ Rad etish", callback_data=f"reject_p_{r['id']}")]])
-            await message.reply(f"ID:{r['id']} @{r['username']} {r['amount']}", reply_markup=kb)
-        return
-    if txt=="🔧 Narxlarni sozlash" and is_admin:
-        await message.reply(f"Currently: REF={REF_REWARD}, MIN_WITHDRAW={MIN_WITHDRAW}, PREMIUM={PREMIUM_COST}")
-        return
     if txt=="🚪 Chiqish":
-        cur.execute("SELECT is_admin FROM users WHERE tg_id=?",(uid,))
-        is_admin = cur.fetchone()["is_admin"]==1
         await message.reply("Asosiy panelga qaytdingiz.", reply_markup=main_menu_kb(is_admin))
         return
 
@@ -365,4 +295,10 @@ async def handle_premium_approve(client, cq):
         await cq.answer("Rad etildi")
 
 if __name__=="__main__":
+    print("✅ Bot ishga tushdi")
+    for a in ADMIN_IDS:
+        try:
+            app.start()
+            app.send_message(a, "✅ Bot ishga tushdi")
+        except: pass
     app.run()
