@@ -1,4 +1,3 @@
-import asyncio
 import logging
 from pyrogram import Client, filters
 from pyrogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardMarkup, KeyboardButton
@@ -84,7 +83,7 @@ class Database:
     def get_referral_count(self, user_id: int) -> int:
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM referrals WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT COUNT(*) FROM referrals WHERE user_id = ? AND processed = 1", (user_id,))
         result = cursor.fetchone()
         conn.close()
         return result[0] if result else 0
@@ -130,7 +129,7 @@ class Database:
     def set_user_state(self, user_id: int, state: Optional[str]):
         conn = self.get_connection()
         cursor = conn.cursor()
-        cursor.execute("UPDATE users SET state = ? WHERE user_id = ?", (state, user_id))
+        cursor.execute("UPDATE users SET state = ?, last_activity = CURRENT_TIMESTAMP WHERE user_id = ?", (state, user_id))
         conn.commit()
         conn.close()
     
@@ -187,7 +186,7 @@ class Database:
             return {'user_id': result[0], 'time': result[1]}
         return None
     
-    def update_premium_status(self, request_id: int, status: str):
+    def update_premium_status_request(self, request_id: int, status: str):
         conn = self.get_connection()
         cursor = conn.cursor()
         cursor.execute("UPDATE premium_requests SET status = ? WHERE id = ?", (status, request_id))
@@ -308,7 +307,7 @@ async def start_command(client: Client, message: Message):
     for channel in zayavka_channels:
         buttons.append([InlineKeyboardButton(f"📢 {channel['name']}", url=channel['link'])])
     buttons.append([InlineKeyboardButton("✔ Tasdiqlash", callback_data="verify_subscription")])
-    welcome_text = f"""🌟 **Universal Stars Bot**ga xush kelibsiz!\n\n💎 **Bot imkoniyatlari:**\n• ⭐ Stars to'plash\n• 🔗 Referal tizimi orqali daromad\n• 💳 Stars yechib olish\n• 🎁 Telegram Premium olish\n\n📊 **Narxlar:**\n• Har bir referal: 3 ⭐\n• Minimal yechish: 15 ⭐\n• Premium: 250 ⭐\n\n⚡ **Boshlash uchun majburiy kanallarga obuna bo'ling!**"""
+    welcome_text = "🌟 **Universal Stars Bot**ga xush kelibsiz!\n\n💎 **Bot imkoniyatlari:**\n• ⭐ Stars to'plash\n• 🔗 Referal tizimi orqali daromad\n• 💳 Stars yechib olish\n• 🎁 Telegram Premium olish\n\n📊 **Narxlar:**\n• Har bir referal: 3 ⭐\n• Minimal yechish: 15 ⭐\n• Premium: 250 ⭐\n\n⚡ **Boshlash uchun majburiy kanallarga obuna bo'ling!**"
     await message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(buttons))
 
 @app.on_callback_query(filters.regex("verify_subscription"))
@@ -346,7 +345,7 @@ async def my_balance(client: Client, message: Message):
     referral_count = db.get_referral_count(user_id)
     premium_status = db.get_premium_status(user_id)
     status_text = "🎁 Premium" if premium_status else "👤 Oddiy"
-    text = f"""⭐ **Sizning balansingiz**\n\n💰 Joriy stars: **{balance} ⭐**\n👥 Taklif qilgan do'stlar: **{referral_count}**\n📊 Status: {status_text}\n\n💡 Ko'proq stars yig'ish uchun referal havolangizni ulashing!"""
+    text = f"⭐ **Sizning balansingiz**\n\n💰 Joriy stars: **{balance} ⭐**\n👥 Taklif qilgan do'stlar: **{referral_count}**\n📊 Status: {status_text}\n\n💡 Ko'proq stars yig'ish uchun referal havolangizni ulashing!"
     await message.reply_text(text)
 
 @app.on_message(filters.regex("🔗 Referal havola") & filters.private)
@@ -354,7 +353,7 @@ async def referral_link(client: Client, message: Message):
     user_id = message.from_user.id
     bot_username = (await client.get_me()).username
     ref_link = f"https://t.me/{bot_username}?start={user_id}"
-    text = f"""🔗 **Sizning referal havolangiz:**\n\n`{ref_link}`\n\n💡 **Qanday ishlaydi?**\n• Havolani do'stlaringizga yuboring\n• Har bir yangi foydalanuvchi uchun **3 ⭐** oling\n• Do'stingiz majburiy kanallarga obuna bo'lgandan keyin bonus hisoblanadi\n\n👥 Hozirda taklif qilganlar: **{db.get_referral_count(user_id)}**"""
+    text = f"🔗 **Sizning referal havolangiz:**\n\n`{ref_link}`\n\n💡 **Qanday ishlaydi?**\n• Havolani do'stlaringizga yuboring\n• Har bir yangi foydalanuvchi uchun **3 ⭐** oling\n• Do'stingiz majburiy kanallarga obuna bo'lgandan keyin bonus hisoblanadi\n\n👥 Hozirda taklif qilganlar: **{db.get_referral_count(user_id)}**"
     buttons = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Havolani ulashish", url=f"https://t.me/share/url?url={ref_link}")]])
     await message.reply_text(text, reply_markup=buttons)
 
@@ -362,7 +361,7 @@ async def referral_link(client: Client, message: Message):
 async def withdraw_stars(client: Client, message: Message):
     user_id = message.from_user.id
     balance = db.get_balance(user_id)
-    text = f"""💳 **Stars yechish**\n\n💰 Sizning balansingiz: **{balance} ⭐**\n\n📊 **Yechish qiymatlari:**"""
+    text = f"💳 **Stars yechish**\n\n💰 Sizning balansingiz: **{balance} ⭐**\n\n📊 **Yechish qiymatlari:**"
     buttons = []
     withdraw_amounts = [(15, "🐻"), (25, "🌸"), (50, "🚀"), (100, "💎")]
     for amount, emoji in withdraw_amounts:
@@ -391,7 +390,7 @@ async def process_withdraw(client: Client, callback: CallbackQuery):
     request_id = db.create_withdraw_request(user_id, amount)
     admin_channel = int(os.getenv("ADMIN_CHANNEL_ID"))
     emoji_map = {15: "🐻", 25: "🌸", 50: "🚀", 100: "💎"}
-    admin_text = f"""⭐ **Stars yechish so'rovi**\n\n👤 User: @{username}\n🆔 ID: `{user_id}`\n🔢 Miqdor: {amount} {emoji_map.get(amount, "⭐")}\n🕒 Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M')}"""
+    admin_text = f"⭐ **Stars yechish so'rovi**\n\n👤 User: @{username}\n🆔 ID: `{user_id}`\n🔢 Miqdor: {amount} {emoji_map.get(amount, '⭐')}\n🕒 Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     admin_buttons = InlineKeyboardMarkup([[InlineKeyboardButton("✔ Tasdiqlash", callback_data=f"admin_approve_withdraw_{request_id}"), InlineKeyboardButton("✖ Rad etish", callback_data=f"admin_reject_withdraw_{request_id}")]])
     await client.send_message(admin_channel, admin_text, reply_markup=admin_buttons)
     await callback.message.edit_text("✅ So'rovingiz qabul qilindi!\n\n⏳ Admin tasdiqlashini kuting...")
@@ -414,14 +413,14 @@ async def process_premium(client: Client, callback: CallbackQuery):
     premium_price = db.get_setting('premium_price', 250)
     request_id = db.create_premium_request(user_id)
     admin_channel = int(os.getenv("ADMIN_CHANNEL_ID"))
-    admin_text = f"""🎁 **Telegram Premium so'rovi**\n\n👤 User: @{username}\n🆔 ID: `{user_id}`\n💳 Miqdor: {premium_price} ⭐\n🕒 Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M')}"""
+    admin_text = f"🎁 **Telegram Premium so'rovi**\n\n👤 User: @{username}\n🆔 ID: `{user_id}`\n💳 Miqdor: {premium_price} ⭐\n🕒 Vaqt: {datetime.now().strftime('%Y-%m-%d %H:%M')}"
     admin_buttons = InlineKeyboardMarkup([[InlineKeyboardButton("✔ Tasdiqlash", callback_data=f"admin_approve_premium_{request_id}"), InlineKeyboardButton("✖ Rad etish", callback_data=f"admin_reject_premium_{request_id}")]])
     await client.send_message(admin_channel, admin_text, reply_markup=admin_buttons)
     await callback.message.edit_text("✅ So'rovingiz qabul qilindi!\n\n⏳ Admin tasdiqlashini kuting...")
 
 @app.on_message(filters.regex("📘 Qo'llanma") & filters.private)
 async def help_guide(client: Client, message: Message):
-    text = """📘 **Bot qo'llanmasi**\n\n**⭐ Stars yig'ish:**\n• Referal havolangiz orqali do'stlaringizni taklif qiling\n• Har bir yangi foydalanuvchi uchun 3 ⭐ oling\n• Do'stingiz majburiy kanallarga obuna bo'lishi kerak\n\n**💳 Stars yechish:**\n• Minimal: 15 ⭐\n• Variantlar:\n  🐻 15 stars\n  🌸 25 stars\n  🚀 50 stars\n  💎 100 stars\n\n**🎁 Premium olish:**\n• Narx: 250 ⭐\n• Muddat: 1 oy\n• Admin orqali beriladi\n\n**🔗 Referal tizimi:**\n• Shaxsiy havolangizni oling\n• Do'stlaringizga yuboring\n• Avtomatik bonus oling"""
+    text = "📘 **Bot qo'llanmasi**\n\n**⭐ Stars yig'ish:**\n• Referal havolangiz orqali do'stlaringizni taklif qiling\n• Har bir yangi foydalanuvchi uchun 3 ⭐ oling\n• Do'stingiz majburiy kanallarga obuna bo'lishi kerak\n\n**💳 Stars yechish:**\n• Minimal: 15 ⭐\n• Variantlar:\n  🐻 15 stars\n  🌸 25 stars\n  🚀 50 stars\n  💎 100 stars\n\n**🎁 Premium olish:**\n• Narx: 250 ⭐\n• Muddat: 1 oy\n• Admin orqali beriladi\n\n**🔗 Referal tizimi:**\n• Shaxsiy havolangizni oling\n• Do'stlaringizga yuboring\n• Avtomatik bonus oling"
     await message.reply_text(text)
 
 @app.on_message(filters.regex("🛠 Admin panel") & filters.private)
@@ -430,7 +429,7 @@ async def admin_panel(client: Client, message: Message):
     if not check_admin(user_id):
         await message.reply_text("❌ Sizda admin huquqlari yo'q!")
         return
-    buttons = [[KeyboardButton("📣 Reklama yuborish")], [KeyboardButton("🔗 Majburiy kanallar"), KeyboardButton("📨 Zayavka kanallar")], [KeyboardButton("📊 Statistika")], [KeyboardButton("💵 Yechish so'rovlari"), KeyboardButton("🎁 Premium so'rovlari")], [KeyboardButton("🔧 Narxlarni sozlash")], [KeyboardButton("🚪 Chiqish")]]
+    buttons = [[KeyboardButton("📣 Reklama yuborish")], [KeyboardButton("🔗 Majburiy kanallar"), KeyboardButton("📨 Zayavka kanallar")], [KeyboardButton("📊 Statistika")], [KeyboardButton("🔧 Narxlarni sozlash")], [KeyboardButton("🚪 Chiqish")]]
     keyboard = ReplyKeyboardMarkup(buttons, resize_keyboard=True)
     await message.reply_text("🛠 **Admin Panel**\n\nKerakli bo'limni tanlang:", reply_markup=keyboard)
 
@@ -453,7 +452,7 @@ async def statistics(client: Client, message: Message):
     if not check_admin(user_id):
         return
     stats = db.get_statistics()
-    text = f"""📊 **Bot statistikasi**\n\n👥 Jami foydalanuvchilar: **{stats['total_users']}**\n🆕 Bugungi yangi: **{stats['today_users']}**\n🔗 Jami referallar: **{stats['total_referrals']}**\n💰 Yechilgan stars: **{stats['total_withdrawn']} ⭐**\n🎁 Premium olganlar: **{stats['premium_users']}**\n📈 Aktiv userlar (7 kun): **{stats['active_users']}**\n\n📅 Oxirgi yangilanish: {stats['last_update']}"""
+    text = f"📊 **Bot statistikasi**\n\n👥 Jami foydalanuvchilar: **{stats['total_users']}**\n🆕 Bugungi yangi: **{stats['today_users']}**\n🔗 Jami referallar: **{stats['total_referrals']}**\n💰 Yechilgan stars: **{stats['total_withdrawn']} ⭐**\n🎁 Premium olganlar: **{stats['premium_users']}**\n📈 Aktiv userlar (7 kun): **{stats['active_users']}**\n\n📅 Oxirgi yangilanish: {stats['last_update']}"
     await message.reply_text(text)
 
 @app.on_message(filters.regex("🔗 Majburiy kanallar") & filters.private)
