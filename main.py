@@ -456,7 +456,7 @@ async def statistics(client: Client, message: Message):
     text = f"""📊 **Bot statistikasi**\n\n👥 Jami foydalanuvchilar: **{stats['total_users']}**\n🆕 Bugungi yangi: **{stats['today_users']}**\n🔗 Jami referallar: **{stats['total_referrals']}**\n💰 Yechilgan stars: **{stats['total_withdrawn']} ⭐**\n🎁 Premium olganlar: **{stats['premium_users']}**\n📈 Aktiv userlar (7 kun): **{stats['active_users']}**\n\n📅 Oxirgi yangilanish: {stats['last_update']}"""
     await message.reply_text(text)
 
-@app.on_message(filters.text("🔗 Majburiy kanallar"))
+@app.on_message(filters.regex("🔗 Majburiy kanallar") & filters.private)
 async def manage_mandatory(client: Client, message: Message):
     user_id = message.from_user.id
     if not check_admin(user_id):
@@ -599,7 +599,7 @@ async def settings_menu(client: Client, message: Message):
         return
     referral_reward = db.get_setting('referral_reward', 3)
     premium_price = db.get_setting('premium_price', 250)
-    text = f"""🔧 **Joriy sozlamalar**\n\n🔗 Referal bonusi: **{referral_reward} ⭐**\n💎 Premium narxi: **{premium_price} ⭐**\n\n💳 **Yechish qiymatlari:**\n🐻 15 stars\n🌸 25 stars\n🚀 50 stars\n💎 100 stars\n\n⚠ Yechish qiymatlari va emoji o'zgartirilmaydi!"""
+    text = f"🔧 **Joriy sozlamalar**\n\n🔗 Referal bonusi: **{referral_reward} ⭐**\n💎 Premium narxi: **{premium_price} ⭐**\n\n💳 **Yechish qiymatlari:**\n🐻 15 stars\n🌸 25 stars\n🚀 50 stars\n💎 100 stars\n\n⚠ Yechish qiymatlari va emoji o'zgartirilmaydi!"
     buttons = InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Referal bonusini o'zgartirish", callback_data="change_referral")], [InlineKeyboardButton("💎 Premium narxini o'zgartirish", callback_data="change_premium_price")]])
     await message.reply_text(text, reply_markup=buttons)
 
@@ -621,7 +621,7 @@ async def cancel_actions(client: Client, callback: CallbackQuery):
     action = "yechish" if "withdraw" in callback.data else "premium"
     await callback.message.edit_text(f"❌ {action.capitalize()} so'rovi bekor qilindi.")
 
-@app.on_message(filters.private & filters.text & ~filters.command("start") & ~filters.regex("⭐|🔗|💳|🎁|📘|🛠|📣|📊|🔧|🚪|💵"))
+@app.on_message(filters.private & filters.text & ~filters.command("start"))
 async def handle_states(client: Client, message: Message):
     user_id = message.from_user.id
     state = db.get_user_state(user_id)
