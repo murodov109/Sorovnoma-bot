@@ -59,89 +59,125 @@ def get_keyboard():
 async def resolve_chat_identifier(text):
     try:
         if text.startswith("https://t.me/+") or text.startswith("https://t.me/joinchat/"):
+            
+            if text.startswith("https://t.me/+"):
+                invite_hash = text.split("+")[1].split("/")[0].split("?")[0]
+            else:
+                invite_hash = text.split("joinchat/")[1].split("/")[0].split("?")[0]
+            
+            try:
+                from pyrogram.raw.functions.messages import CheckChatInvite, ImportChatInvite
+                from pyrogram.raw.types import ChatInviteAlready, ChatInvite
+                
+                check_result = await app.invoke(CheckChatInvite(hash=invite_hash))
+                
+                if isinstance(check_result, ChatInviteAlready):
+                    chat = check_result.chat
+                    
+                    if hasattr(chat, 'id'):
+                        raw_id = chat.id
+                        if str(raw_id).startswith("-100"):
+                            chat_id = raw_id
+                        else:
+                            chat_id = int(f"-100{raw_id}")
+                        
+                        title = getattr(chat, 'title', 'Kanal')
+                        
+                        return {
+                            "id": chat_id,
+                            "title": title,
+                            "username": getattr(chat, 'username', None),
+                            "invite_link": text
+                        }
+                
+                elif isinstance(check_result, ChatInvite):
+                    
+                    try:
+                        import_result = await app.invoke(ImportChatInvite(hash=invite_hash))
+                        await asyncio.sleep(1)
+                        
+                        if hasattr(import_result, 'chats') and len(import_result.chats) > 0:
+                            chat = import_result.chats[0]
+                            raw_id = chat.id
+                            
+                            if str(raw_id).startswith("-100"):
+                                chat_id = raw_id
+                            else:
+                                chat_id = int(f"-100{raw_id}")
+                            
+                            title = getattr(chat, 'title', 'Kanal')
+                            
+                            return {
+                                "id": chat_id,
+                                "title": title,
+                                "username": getattr(chat, 'username', None),
+                                "invite_link": text
+                            }
+                    except:
+                        pass
+                    
+                    title = getattr(check_result, 'title', 'Maxfiy Kanal')
+                    
+                    if hasattr(check_result, 'chat'):
+                        chat = check_result.chat
+                        raw_id = chat.id
+                        if str(raw_id).startswith("-100"):
+                            chat_id = raw_id
+                        else:
+                            chat_id = int(f"-100{raw_id}")
+                        
+                        return {
+                            "id": chat_id,
+                            "title": getattr(chat, 'title', title),
+                            "username": None,
+                            "invite_link": text
+                        }
+                    
+                    try:
+                        await app.join_chat(text)
+                        await asyncio.sleep(2)
+                        chat = await app.get_chat(text)
+                        return {
+                            "id": int(chat.id),
+                            "title": getattr(chat, "title", title),
+                            "username": None,
+                            "invite_link": text
+                        }
+                    except:
+                        pass
+                
+            except Exception as e:
+                print(f"CheckChatInvite error: {e}")
+            
             try:
                 await app.join_chat(text)
                 await asyncio.sleep(2)
-                
-                from pyrogram.raw.functions.messages import CheckChatInvite
-                
-                if text.startswith("https://t.me/+"):
-                    invite_hash = text.split("+")[1].split("/")[0].split("?")[0]
-                else:
-                    invite_hash = text.split("joinchat/")[1].split("/")[0].split("?")[0]
-                
-                result = await app.invoke(CheckChatInvite(hash=invite_hash))
-                
-                if hasattr(result, 'chat'):
-                    raw_id = result.chat.id
-                    
-                    if isinstance(raw_id, int):
-                        if str(raw_id).startswith("-100"):
-                            chat_id = raw_id
-                        elif raw_id < 0:
-                            chat_id = raw_id
-                        else:
-                            chat_id = int(f"-100{raw_id}")
-                    else:
-                        chat_id = int(f"-100{raw_id}")
-                    
-                    title = getattr(result.chat, 'title', 'Maxfiy Kanal')
-                    
-                    try:
-                        real_chat = await app.get_chat(chat_id)
-                        title = getattr(real_chat, 'title', title)
-                    except:
-                        pass
-                    
-                    return {
-                        "id": chat_id,
-                        "title": title,
-                        "username": None,
-                        "invite_link": text
-                    }
-                elif hasattr(result, 'channel'):
-                    raw_id = result.channel.id
-                    
-                    if isinstance(raw_id, int):
-                        if str(raw_id).startswith("-100"):
-                            chat_id = raw_id
-                        elif raw_id < 0:
-                            chat_id = raw_id
-                        else:
-                            chat_id = int(f"-100{raw_id}")
-                    else:
-                        chat_id = int(f"-100{raw_id}")
-                    
-                    title = getattr(result.channel, 'title', 'Maxfiy Kanal')
-                    
-                    try:
-                        real_chat = await app.get_chat(chat_id)
-                        title = getattr(real_chat, 'title', title)
-                    except:
-                        pass
-                    
-                    return {
-                        "id": chat_id,
-                        "title": title,
-                        "username": None,
-                        "invite_link": text
-                    }
-                
+                chat = await app.get_chat(text)
+                return {
+                    "id": int(chat.id),
+                    "title": getattr(chat, "title", "Maxfiy Kanal"),
+                    "username": None,
+                    "invite_link": text
+                }
             except Exception as e:
-                print(f"Private channel error: {e}")
-                
-                try:
-                    chat = await app.get_chat(text)
-                    return {
-                        "id": int(chat.id),
-                        "title": getattr(chat, "title", "Maxfiy Kanal"),
-                        "username": None,
-                        "invite_link": text
-                    }
-                except:
-                    pass
-                
-                return None
+                print(f"join_chat error: {e}")
+            
+            for peer in await app.get_dialogs():
+                if hasattr(peer.chat, 'id'):
+                    try:
+                        chat = await app.get_chat(peer.chat.id)
+                        if hasattr(chat, 'invite_link') and chat.invite_link:
+                            if invite_hash in str(chat.invite_link):
+                                return {
+                                    "id": int(chat.id),
+                                    "title": getattr(chat, "title", "Kanal"),
+                                    "username": getattr(chat, "username", None),
+                                    "invite_link": text
+                                }
+                    except:
+                        continue
+            
+            return None
             
         elif text.startswith("https://t.me/"):
             username = text.replace("https://t.me/", "").split("/")[0]
