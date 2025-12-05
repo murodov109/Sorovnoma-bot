@@ -10,9 +10,7 @@ from pyrogram.errors import UserNotParticipant, UserIsBlocked, ChannelInvalid, U
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
-ADMIN_IDS = []
-if os.getenv("ADMIN_IDS"):
-    ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS").split(",") if x.strip()]
+ADMIN_IDS = [int(x) for x in os.getenv("ADMIN_IDS","").split(",") if x.strip()]
 
 app = Client("sub_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -53,14 +51,18 @@ def admin_panel():
     ]
     return InlineKeyboardMarkup(keyboard)
 
-async def check_subscription(user_id):
+async def check_subscription(user_id: int) -> bool:
     if not data.get("channels"):
         return True
     for ch_key, ch_info in list(data["channels"].items()):
+        identifier = ch_key
         try:
-            target = int(ch_key)
-        except:
-            target = ch_key
+            if identifier.isdigit() or (identifier.startswith("-100") and identifier[1:].isdigit()):
+                target = int(identifier)
+            else:
+                target = identifier
+        except Exception:
+            target = identifier
         try:
             member = await app.get_chat_member(target, user_id)
             status = getattr(member, "status", "")
@@ -70,9 +72,9 @@ async def check_subscription(user_id):
         except UserNotParticipant:
             return False
         except (UserIsBlocked, ChannelInvalid, UsernameInvalid, RPCError):
-            return False
+            continue
         except Exception:
-            return False
+            continue
     return True
 
 def get_keyboard():
@@ -91,7 +93,7 @@ def get_keyboard():
 async def start_handler(client, message):
     uid = message.from_user.id
     if uid in ADMIN_IDS:
-        await message.reply("🎛 *Admin Panel*", reply_markup=admin_panel())
+        await message.reply("🎛 Admin Panel", reply_markup=admin_panel())
     else:
         await message.reply("👋 Salom! Men guruh uchun obuna tekshirish botiman.")
 
@@ -101,7 +103,7 @@ async def add_channel_callback(client, callback):
         await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
     user_states[callback.from_user.id] = "waiting_channel_add"
-    await callback.edit_message_text("📝 Kanal qo'shish\n\nKanal ID, username yoki invite link yuboring:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
+    await callback.edit_message_text("📝 Kanal qo'shish\nKanal ID, username yoki invite link yuboring:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
 
 @app.on_callback_query(filters.regex("^del_channel$"))
 async def del_channel_callback(client, callback):
@@ -159,20 +161,14 @@ async def text_handler(client, message):
     try:
         chat = None
         channel_id_str = None
-        if text.startswith("https://t.me/+") or ("t.me/+" in text and "http" in text):
-            try:
-                chat = await app.get_chat(text)
-                channel_id_str = str(chat.id)
-            except:
-                channel_id_str = None
-        elif text.startswith("https://t.me/") or text.startswith("http://t.me/") or text.startswith("@") or text.startswith("-100") or "t.me/" in text:
-            try:
-                chat = await app.get_chat(text)
-                channel_id_str = str(chat.id)
-            except:
-                channel_id_str = None
-        else:
-            channel_id_str = None
+        try:
+            chat = await app.get_chat(text)
+            channel_id_str = str(chat.id)
+        except Exception:
+            if text.startswith("@") or text.startswith("-100") or "t.me" in text or text.startswith("http"):
+                channel_id_str = text.strip()
+            else:
+                channel_id_str = text.strip()
         if not channel_id_str:
             await message.reply("Kanal topilmadi. To'g'ri identifier yuboring.")
             user_states.pop(user_id, None)
@@ -191,20 +187,20 @@ async def text_handler(client, message):
         is_private = False
         title = getattr(chat, "title", channel_id_str)
         try:
-            if getattr(chat, "username", None):
+            if chat and getattr(chat, "username", None):
                 invite_link = f"https://t.me/{chat.username}"
                 is_private = False
             else:
                 try:
-                    invite_link = await app.export_chat_invite_link(int(channel_id_str))
-                    is_private = True
-                except:
+                    invite_link = await app.export_chat_invite_link(int(channel_id_str)) if channel_id_str.lstrip("-").isdigit() else ""
+                    is_private = bool(invite_link)
+                except Exception:
                     invite_link = ""
                     is_private = True
-        except:
+        except Exception:
             invite_link = ""
             is_private = True
-        data["channels"][channel_id_str] = {"title": title, "invite_link": invite_link, "is_private": is_private}
+        data[channel_id_str] = {"title": title, "invite_link": invite_link, "is_private": is_private}
         save_data(data)
         ch_type = "🔒 Yopiq" if is_private else "🔓 Ochiq"
         await message.reply(f"Kanal qo'shildi!\nNomi: {title}\nTuri: {ch_type}\nID: `{channel_id_str}`", reply_markup=admin_panel())
@@ -231,7 +227,7 @@ async def group_handler(client, message):
             data["stats"]["blocked"] = data["stats"].get("blocked", 0) + 1
             save_data(data)
             text = random.choice(messages).format(user=message.from_user.mention)
-            until = datetime.utcnow() + timedelta(seconds=10)
+            until = int((datetime.utcnow() + timedelta(seconds=10)).timestamp())
             try:
                 await client.restrict_chat_member(chat_id=message.chat.id, user_id=message.from_user.id, permissions=ChatPermissions(), until_date=until)
             except:
