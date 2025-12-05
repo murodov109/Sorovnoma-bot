@@ -76,10 +76,16 @@ async def resolve_chat_identifier(text):
                     
                     if hasattr(chat, 'id'):
                         raw_id = chat.id
-                        if str(raw_id).startswith("-100"):
+                        
+                        if isinstance(raw_id, str):
+                            raw_id = int(raw_id)
+                        
+                        if raw_id > 0:
+                            chat_id = int(f"-100{raw_id}")
+                        elif str(raw_id).startswith("-100"):
                             chat_id = raw_id
                         else:
-                            chat_id = int(f"-100{raw_id}")
+                            chat_id = raw_id
                         
                         title = getattr(chat, 'title', 'Kanal')
                         
@@ -94,18 +100,29 @@ async def resolve_chat_identifier(text):
                     
                     try:
                         import_result = await app.invoke(ImportChatInvite(hash=invite_hash))
-                        await asyncio.sleep(1)
+                        await asyncio.sleep(2)
                         
                         if hasattr(import_result, 'chats') and len(import_result.chats) > 0:
                             chat = import_result.chats[0]
                             raw_id = chat.id
                             
-                            if str(raw_id).startswith("-100"):
+                            if isinstance(raw_id, str):
+                                raw_id = int(raw_id)
+                            
+                            if raw_id > 0:
+                                chat_id = int(f"-100{raw_id}")
+                            elif str(raw_id).startswith("-100"):
                                 chat_id = raw_id
                             else:
-                                chat_id = int(f"-100{raw_id}")
+                                chat_id = raw_id
                             
                             title = getattr(chat, 'title', 'Kanal')
+                            
+                            try:
+                                verify_chat = await app.get_chat(chat_id)
+                                title = getattr(verify_chat, 'title', title)
+                            except:
+                                pass
                             
                             return {
                                 "id": chat_id,
@@ -113,18 +130,24 @@ async def resolve_chat_identifier(text):
                                 "username": getattr(chat, 'username', None),
                                 "invite_link": text
                             }
-                    except:
-                        pass
+                    except Exception as e:
+                        print(f"ImportChatInvite error: {e}")
                     
                     title = getattr(check_result, 'title', 'Maxfiy Kanal')
                     
                     if hasattr(check_result, 'chat'):
                         chat = check_result.chat
                         raw_id = chat.id
-                        if str(raw_id).startswith("-100"):
+                        
+                        if isinstance(raw_id, str):
+                            raw_id = int(raw_id)
+                        
+                        if raw_id > 0:
+                            chat_id = int(f"-100{raw_id}")
+                        elif str(raw_id).startswith("-100"):
                             chat_id = raw_id
                         else:
-                            chat_id = int(f"-100{raw_id}")
+                            chat_id = raw_id
                         
                         return {
                             "id": chat_id,
@@ -135,47 +158,40 @@ async def resolve_chat_identifier(text):
                     
                     try:
                         await app.join_chat(text)
-                        await asyncio.sleep(2)
-                        chat = await app.get_chat(text)
-                        return {
-                            "id": int(chat.id),
-                            "title": getattr(chat, "title", title),
-                            "username": None,
-                            "invite_link": text
-                        }
-                    except:
-                        pass
+                        await asyncio.sleep(3)
+                        
+                        dialogs = [d async for d in app.get_dialogs()]
+                        for dialog in dialogs:
+                            if hasattr(dialog.chat, 'id'):
+                                chat = dialog.chat
+                                try:
+                                    chat_full = await app.get_chat(chat.id)
+                                    if hasattr(chat_full, 'invite_link') and chat_full.invite_link:
+                                        if invite_hash in str(chat_full.invite_link):
+                                            return {
+                                                "id": int(chat.id),
+                                                "title": getattr(chat, "title", title),
+                                                "username": getattr(chat, "username", None),
+                                                "invite_link": text
+                                            }
+                                except:
+                                    continue
+                        
+                        dialogs = [d async for d in app.get_dialogs(limit=50)]
+                        latest_chat = dialogs[0].chat if dialogs else None
+                        if latest_chat:
+                            return {
+                                "id": int(latest_chat.id),
+                                "title": getattr(latest_chat, "title", title),
+                                "username": getattr(latest_chat, "username", None),
+                                "invite_link": text
+                            }
+                        
+                    except Exception as e:
+                        print(f"join_chat error: {e}")
                 
             except Exception as e:
                 print(f"CheckChatInvite error: {e}")
-            
-            try:
-                await app.join_chat(text)
-                await asyncio.sleep(2)
-                chat = await app.get_chat(text)
-                return {
-                    "id": int(chat.id),
-                    "title": getattr(chat, "title", "Maxfiy Kanal"),
-                    "username": None,
-                    "invite_link": text
-                }
-            except Exception as e:
-                print(f"join_chat error: {e}")
-            
-            for peer in await app.get_dialogs():
-                if hasattr(peer.chat, 'id'):
-                    try:
-                        chat = await app.get_chat(peer.chat.id)
-                        if hasattr(chat, 'invite_link') and chat.invite_link:
-                            if invite_hash in str(chat.invite_link):
-                                return {
-                                    "id": int(chat.id),
-                                    "title": getattr(chat, "title", "Kanal"),
-                                    "username": getattr(chat, "username", None),
-                                    "invite_link": text
-                                }
-                    except:
-                        continue
             
             return None
             
