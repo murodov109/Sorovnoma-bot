@@ -60,24 +60,64 @@ async def resolve_chat_identifier(text):
     try:
         if text.startswith("https://t.me/+") or text.startswith("https://t.me/joinchat/"):
             try:
-                chat_preview = await app.invoke(
-                    app.resolve_peer(text)
-                )
-                return {"needs_join": True, "link": text}
+                await app.join_chat(text)
+                await asyncio.sleep(2)
             except:
+                pass
+            
+            try:
+                from pyrogram.raw.functions.messages import CheckChatInvite, ImportChatInvite
+                from pyrogram.raw.types import InputStickerSetShortName
+                
+                if text.startswith("https://t.me/+"):
+                    invite_hash = text.split("+")[1].split("/")[0]
+                else:
+                    invite_hash = text.split("joinchat/")[1].split("/")[0]
+                
                 try:
-                    await app.join_chat(text)
-                    await asyncio.sleep(1)
-                    chat = await app.get_chat(text)
-                    return {
-                        "id": int(chat.id),
-                        "title": getattr(chat, "title", ""),
-                        "username": None,
-                        "invite_link": text
-                    }
+                    result = await app.invoke(CheckChatInvite(hash=invite_hash))
+                    
+                    if hasattr(result, 'chat'):
+                        chat_id = result.chat.id
+                        if hasattr(result.chat, 'id'):
+                            if str(result.chat.id).startswith("-100"):
+                                chat_id = result.chat.id
+                            else:
+                                chat_id = int(f"-100{result.chat.id}")
+                        
+                        title = getattr(result.chat, 'title', 'Kanal')
+                        
+                        try:
+                            await app.invoke(ImportChatInvite(hash=invite_hash))
+                            await asyncio.sleep(1)
+                        except:
+                            pass
+                        
+                        return {
+                            "id": chat_id,
+                            "title": title,
+                            "username": None,
+                            "invite_link": text
+                        }
                 except Exception as e:
-                    print(f"Private link join error: {e}")
-                    return {"needs_admin": True, "link": text}
+                    print(f"Check invite error: {e}")
+                    pass
+            except:
+                pass
+            
+            try:
+                chat = await app.get_chat(text)
+                return {
+                    "id": int(chat.id),
+                    "title": getattr(chat, "title", ""),
+                    "username": None,
+                    "invite_link": text
+                }
+            except:
+                pass
+            
+            return {"error": "private_channel", "link": text}
+            
         elif text.startswith("https://t.me/"):
             username = text.replace("https://t.me/", "").split("/")[0]
             if not username.startswith("@"):
@@ -251,36 +291,22 @@ async def text_handler(client, message):
                 user_states.pop(user_id, None)
                 return
             
-            if resolved.get("needs_admin"):
+            if resolved.get("error") == "private_channel":
                 link = resolved.get("link")
-                msg = await message.reply(
-                    f"⚠️ **Shaxsiy kanal aniqlandi!**\n\n"
-                    f"Quyidagi amallarni bajaring:\n"
-                    f"1. Botni kanal adminiga qo'shing\n"
-                    f"2. Kanal ID ni yuboring (masalan: `-100xxxxxxxxx`)\n\n"
-                    f"Kanal ID ni olish uchun:\n"
-                    f"• Kanal ma'lumotlarini forward qiling @userinfobot ga\n"
-                    f"• Yoki web.telegram.org da kanalga kiring va URL dan ID ni ko'ring",
+                await message.reply(
+                    f"⚠️ **Shaxsiy kanal!**\n\n"
+                    f"Quyidagi tartibda qo'shing:\n\n"
+                    f"1️⃣ Botni kanal **adminiga** qo'shing\n"
+                    f"2️⃣ Kanal ID ni yuboring\n\n"
+                    f"**Kanal ID qanday topiladi:**\n"
+                    f"• Kanal postini @userinfobot ga forward qiling\n"
+                    f"• Yoki @getmyid_bot ga forward qiling\n"
+                    f"• ID: `-100xxxxxxxxx` ko'rinishida bo'ladi\n\n"
+                    f"Havola: `{link}`",
                     reply_markup=admin_panel()
                 )
                 user_states.pop(user_id, None)
                 return
-            
-            if resolved.get("needs_join"):
-                await message.reply(
-                    "⏳ Kanalga qo'shilmoqdaman...",
-                )
-                await asyncio.sleep(2)
-                link = resolved.get("link")
-                resolved = await resolve_chat_identifier(link)
-                if not resolved or resolved.get("needs_admin"):
-                    await message.reply(
-                        "❌ Kanalga qo'shilish imkoni yo'q.\n\n"
-                        "Botni avval kanal adminiga qo'shing, keyin kanal ID ni yuboring.",
-                        reply_markup=admin_panel()
-                    )
-                    user_states.pop(user_id, None)
-                    return
             
             ch_id = resolved["id"]
             title = resolved.get("title") or str(ch_id)
@@ -309,7 +335,7 @@ async def text_handler(client, message):
             ch_type = "🔒 Yopiq" if is_private else "🔓 Ochiq"
             await message.reply(f"✅ **Kanal qo'shildi!**\n\nNomi: **{title}**\nTuri: {ch_type}\nID: `{key}`", reply_markup=admin_panel())
         except Exception as e:
-            await message.reply(f"❌ Kanal qo'shishda xatolik: {str(e)}", reply_markup=admin_panel())
+            await message.reply(f"❌ Xatolik: {str(e)}", reply_markup=admin_panel())
         user_states.pop(user_id, None)
         return
 
