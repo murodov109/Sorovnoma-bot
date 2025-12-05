@@ -59,22 +59,15 @@ def get_keyboard():
 async def resolve_chat_identifier(text):
     try:
         if text.startswith("https://t.me/+") or text.startswith("https://t.me/joinchat/"):
-            if text.startswith("https://t.me/+"):
-                invite_hash = text.replace("https://t.me/+", "").split("/")[0]
-            else:
-                invite_hash = text.replace("https://t.me/joinchat/", "").split("/")[0]
-            
             try:
-                chat_invite = await app.get_chat(text)
-                return {
-                    "id": int(chat_invite.id),
-                    "title": getattr(chat_invite, "title", ""),
-                    "username": None,
-                    "invite_link": text
-                }
+                chat_preview = await app.invoke(
+                    app.resolve_peer(text)
+                )
+                return {"needs_join": True, "link": text}
             except:
                 try:
                     await app.join_chat(text)
+                    await asyncio.sleep(1)
                     chat = await app.get_chat(text)
                     return {
                         "id": int(chat.id),
@@ -83,8 +76,8 @@ async def resolve_chat_identifier(text):
                         "invite_link": text
                     }
                 except Exception as e:
-                    print(f"Private link error: {e}")
-                    return None
+                    print(f"Private link join error: {e}")
+                    return {"needs_admin": True, "link": text}
         elif text.startswith("https://t.me/"):
             username = text.replace("https://t.me/", "").split("/")[0]
             if not username.startswith("@"):
@@ -252,10 +245,42 @@ async def text_handler(client, message):
     if state == "waiting_channel_add":
         try:
             resolved = await resolve_chat_identifier(text)
+            
             if not resolved:
                 await message.reply("❌ Kanal topilmadi. To'g'ri identifier yuboring.", reply_markup=admin_panel())
                 user_states.pop(user_id, None)
                 return
+            
+            if resolved.get("needs_admin"):
+                link = resolved.get("link")
+                msg = await message.reply(
+                    f"⚠️ **Shaxsiy kanal aniqlandi!**\n\n"
+                    f"Quyidagi amallarni bajaring:\n"
+                    f"1. Botni kanal adminiga qo'shing\n"
+                    f"2. Kanal ID ni yuboring (masalan: `-100xxxxxxxxx`)\n\n"
+                    f"Kanal ID ni olish uchun:\n"
+                    f"• Kanal ma'lumotlarini forward qiling @userinfobot ga\n"
+                    f"• Yoki web.telegram.org da kanalga kiring va URL dan ID ni ko'ring",
+                    reply_markup=admin_panel()
+                )
+                user_states.pop(user_id, None)
+                return
+            
+            if resolved.get("needs_join"):
+                await message.reply(
+                    "⏳ Kanalga qo'shilmoqdaman...",
+                )
+                await asyncio.sleep(2)
+                link = resolved.get("link")
+                resolved = await resolve_chat_identifier(link)
+                if not resolved or resolved.get("needs_admin"):
+                    await message.reply(
+                        "❌ Kanalga qo'shilish imkoni yo'q.\n\n"
+                        "Botni avval kanal adminiga qo'shing, keyin kanal ID ni yuboring.",
+                        reply_markup=admin_panel()
+                    )
+                    user_states.pop(user_id, None)
+                    return
             
             ch_id = resolved["id"]
             title = resolved.get("title") or str(ch_id)
