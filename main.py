@@ -65,49 +65,49 @@ def get_keyboard():
 
 async def resolve_chat_identifier(text):
     try:
-        chat = await app.get_chat(text)
-        return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
+        if text.startswith("@"):
+            chat = await app.get_chat(text)
+            return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
+        elif text.startswith("-100") or (text.startswith("-") and text[1:].isdigit()):
+            chat_id = int(text)
+            chat = await app.get_chat(chat_id)
+            return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
+        elif text.isdigit() or (text.startswith("-") and len(text) > 1):
+            chat_id = int(text)
+            chat = await app.get_chat(chat_id)
+            return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
+        else:
+            chat = await app.get_chat(text)
+            return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
     except Exception:
-        if text.startswith("-100") and text.lstrip("-").isdigit():
-            try:
-                chat = await app.get_chat(int(text))
-                return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
-            except Exception:
-                return {"id": int(text), "title": "", "username": None}
         return None
 
 async def check_subscription(user_id: int) -> bool:
     if not data.get("channels"):
         return True
+    
     for key, ch_info in list(data["channels"].items()):
         ch_id = ch_info.get("id")
+        
         if not ch_id:
-            try:
-                resolved = await resolve_chat_identifier(key)
-                if resolved:
-                    ch_id = resolved["id"]
-                    ch_info["id"] = ch_id
-                    if not ch_info.get("title") and resolved.get("title"):
-                        ch_info["title"] = resolved["title"]
-                    save_data(data)
-                else:
-                    return False
-            except Exception:
-                return False
+            resolved = await resolve_chat_identifier(key)
+            if not resolved:
+                continue
+            ch_id = resolved["id"]
+            ch_info["id"] = ch_id
+            if not ch_info.get("title") and resolved.get("title"):
+                ch_info["title"] = resolved["title"]
+            save_data(data)
+        
         try:
             member = await app.get_chat_member(ch_id, user_id)
-            status = getattr(member, "status", "")
-            if status in ("member", "administrator", "creator"):
-                continue
-            return False
+            if member.status not in ["member", "administrator", "creator"]:
+                return False
         except UserNotParticipant:
             return False
-        except (ChannelInvalid, UsernameInvalid, UserIsBlocked):
-            return False
-        except RPCError:
-            return False
         except Exception:
-            return False
+            continue
+    
     return True
 
 @app.on_message(filters.command("start") & filters.private)
@@ -169,6 +169,13 @@ async def stats_callback(client, callback):
         f"📣 Kanallar soni: {len(data.get('channels',{}))}"
     )
     await callback.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
+
+@app.on_callback_query(filters.regex("^admin_panel$"))
+async def admin_panel_callback(client, callback):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
+        return
+    await callback.edit_message_text("🎛 Admin Panel", reply_markup=admin_panel())
 
 @app.on_message(filters.private & filters.text & ~filters.command("start"))
 async def text_handler(client, message):
