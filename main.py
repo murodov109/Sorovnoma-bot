@@ -53,9 +53,9 @@ def admin_panel():
 
 def get_keyboard():
     buttons = []
-    for i, (channel_id, channel_info) in enumerate(data["channels"].items(), 1):
-        invite_link = channel_info.get("invite_link", "")
-        title = channel_info.get("title", f"{i}-Kanal")
+    for i, (key, ch_info) in enumerate(data["channels"].items(), 1):
+        invite_link = ch_info.get("invite_link", "")
+        title = ch_info.get("title", f"{i}-Kanal")
         if invite_link:
             buttons.append([InlineKeyboardButton(f"📣 {title}", url=invite_link)])
         else:
@@ -63,23 +63,48 @@ def get_keyboard():
     buttons.append([InlineKeyboardButton("🔄 Obunani tekshirish", callback_data="check_sub")])
     return InlineKeyboardMarkup(buttons)
 
+async def resolve_chat_identifier(text):
+    try:
+        chat = await app.get_chat(text)
+        return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
+    except Exception:
+        if text.startswith("-100") and text.lstrip("-").isdigit():
+            try:
+                chat = await app.get_chat(int(text))
+                return {"id": int(chat.id), "title": getattr(chat, "title", ""), "username": getattr(chat, "username", None)}
+            except Exception:
+                return {"id": int(text), "title": "", "username": None}
+        return None
+
 async def check_subscription(user_id: int) -> bool:
     if not data.get("channels"):
         return True
-    for ch_key in list(data["channels"].keys()):
+    for key, ch_info in list(data["channels"].items()):
+        ch_id = ch_info.get("id")
+        if not ch_id:
+            try:
+                resolved = await resolve_chat_identifier(key)
+                if resolved:
+                    ch_id = resolved["id"]
+                    ch_info["id"] = ch_id
+                    if not ch_info.get("title") and resolved.get("title"):
+                        ch_info["title"] = resolved["title"]
+                    save_data(data)
+                else:
+                    return False
+            except Exception:
+                return False
         try:
-            target = int(ch_key)
-        except:
-            target = ch_key
-        try:
-            member = await app.get_chat_member(target, user_id)
+            member = await app.get_chat_member(ch_id, user_id)
             status = getattr(member, "status", "")
             if status in ("member", "administrator", "creator"):
                 continue
             return False
         except UserNotParticipant:
             return False
-        except (ChannelInvalid, UsernameInvalid, UserIsBlocked, RPCError):
+        except (ChannelInvalid, UsernameInvalid, UserIsBlocked):
+            return False
+        except RPCError:
             return False
         except Exception:
             return False
@@ -126,8 +151,8 @@ async def list_channels_callback(client, callback):
         await callback.answer("❌ Hozircha kanallar qo'shilmagan!", show_alert=True)
         return
     text = "📋 Kanallar ro'yxati:\n\n"
-    for i, (ch_id, ch_info) in enumerate(data["channels"].items(), 1):
-        title = ch_info.get("title", "Noma'lum kanal")
+    for i, (ch_id, ch_info) in enumerate(data["channels"].items(),1):
+        title = ch_info.get("title","Noma'lum kanal")
         ch_type = "🔒 Yopiq" if ch_info.get("is_private") else "🔓 Ochiq"
         text += f"{i}. {ch_type} {title}\n   `{ch_id}`\n\n"
     await callback.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
@@ -155,10 +180,10 @@ async def text_handler(client, message):
         return
     text = message.text.strip()
     if state == "waiting_channel_del":
-        ch_key = text.strip()
-        if ch_key in data["channels"]:
-            title = data["channels"][ch_key].get("title", "Noma'lum")
-            del data["channels"][ch_key]
+        key = text.strip()
+        if key in data["channels"]:
+            title = data["channels"][key].get("title","Noma'lum")
+            del data["channels"][key]
             save_data(data)
             await message.reply(f"✅ Kanal o'chirildi: {title}", reply_markup=admin_panel())
         else:
@@ -174,45 +199,28 @@ async def text_handler(client, message):
                 await message.reply(f"✅ Kanal o'chirildi: {title}", reply_markup=admin_panel())
             else:
                 await message.reply("❌ Bu kanal ro'yxatda yo'q!")
-        user_states.pop(user_id, None)
+        user_states.pop(user_id,None)
         return
     if state == "waiting_channel_add":
         try:
-            chat = None
-            channel_id_str = None
-            try:
-                chat = await app.get_chat(text)
-                channel_id_str = str(chat.id)
-            except:
-                if text.startswith("@") or text.startswith("-100") or "t.me" in text or text.startswith("http"):
-                    channel_id_str = text.strip()
-                else:
-                    channel_id_str = text.strip()
-            title = getattr(chat, "title", channel_id_str)
-            invite_link = ""
-            is_private = False
-            try:
-                if chat and getattr(chat, "username", None):
-                    invite_link = f"https://t.me/{chat.username}"
-                    is_private = False
-                else:
-                    try:
-                        invite_link = await app.export_chat_invite_link(int(channel_id_str)) if channel_id_str.lstrip("-").isdigit() else ""
-                        is_private = bool(invite_link) or True
-                    except:
-                        invite_link = ""
-                        is_private = True
-            except:
-                invite_link = ""
-                is_private = True
-            key = channel_id_str if isinstance(channel_id_str, str) else str(channel_id_str)
-            data["channels"][key] = {"title": title, "invite_link": invite_link, "is_private": is_private}
+            resolved = await resolve_chat_identifier(text)
+            if not resolved:
+                await message.reply("❌ Kanal topilmadi. To'g'ri identifier yuboring.")
+                user_states.pop(user_id,None)
+                return
+            ch_id = resolved["id"]
+            title = resolved.get("title") or str(ch_id)
+            username = resolved.get("username")
+            invite_link = f"https://t.me/{username}" if username else ""
+            is_private = False if username else True
+            key = str(ch_id)
+            data["channels"][key] = {"id": ch_id, "title": title, "username": username or "", "invite_link": invite_link, "is_private": is_private}
             save_data(data)
             ch_type = "🔒 Yopiq" if is_private else "🔓 Ochiq"
             await message.reply(f"✅ Kanal qo'shildi!\nNomi: {title}\nTuri: {ch_type}\nID: `{key}`", reply_markup=admin_panel())
         except Exception:
             await message.reply("❌ Kanal qo'shishda xatolik yuz berdi.")
-        user_states.pop(user_id, None)
+        user_states.pop(user_id,None)
         return
 
 @app.on_message(filters.group & ~filters.service)
