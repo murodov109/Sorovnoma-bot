@@ -58,8 +58,35 @@ def get_keyboard():
 
 async def resolve_chat_identifier(text):
     try:
-        if text.startswith("https://t.me/"):
-            username = text.replace("https://t.me/", "").replace("+", "").split("/")[0]
+        if text.startswith("https://t.me/+") or text.startswith("https://t.me/joinchat/"):
+            if text.startswith("https://t.me/+"):
+                invite_hash = text.replace("https://t.me/+", "").split("/")[0]
+            else:
+                invite_hash = text.replace("https://t.me/joinchat/", "").split("/")[0]
+            
+            try:
+                chat_invite = await app.get_chat(text)
+                return {
+                    "id": int(chat_invite.id),
+                    "title": getattr(chat_invite, "title", ""),
+                    "username": None,
+                    "invite_link": text
+                }
+            except:
+                try:
+                    await app.join_chat(text)
+                    chat = await app.get_chat(text)
+                    return {
+                        "id": int(chat.id),
+                        "title": getattr(chat, "title", ""),
+                        "username": None,
+                        "invite_link": text
+                    }
+                except Exception as e:
+                    print(f"Private link error: {e}")
+                    return None
+        elif text.startswith("https://t.me/"):
+            username = text.replace("https://t.me/", "").split("/")[0]
             if not username.startswith("@"):
                 username = "@" + username
             chat = await app.get_chat(username)
@@ -233,8 +260,16 @@ async def text_handler(client, message):
             ch_id = resolved["id"]
             title = resolved.get("title") or str(ch_id)
             username = resolved.get("username")
-            invite_link = f"https://t.me/{username}" if username else ""
-            is_private = False if username else True
+            
+            if "invite_link" in resolved and resolved["invite_link"]:
+                invite_link = resolved["invite_link"]
+                is_private = True
+            elif username:
+                invite_link = f"https://t.me/{username}"
+                is_private = False
+            else:
+                invite_link = ""
+                is_private = True
             
             key = str(ch_id)
             data["channels"][key] = {
