@@ -106,61 +106,56 @@ async def check_subscription(user_id: int) -> bool:
     
     return True
 
+def admin_panel():
+    keyboard = [
+        [InlineKeyboardButton("➕ Kanal qo'shish", callback_data="add_channel")],
+        [InlineKeyboardButton("➖ Kanal o'chirish", callback_data="del_channel")],
+        [InlineKeyboardButton("📋 Kanallar ro'yxati", callback_data="list_channels")],
+        [InlineKeyboardButton("📊 Statistika", callback_data="stats")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(client, message):
     uid = message.from_user.id
     if uid in ADMIN_IDS:
-        menu_text = """
-🎛 **ADMIN PANEL**
-
-Buyruqlar:
-/addchannel - Kanal qo'shish
-/delchannel - Kanal o'chirish
-/channels - Kanallar ro'yxati
-/stats - Statistika
-        """
-        await message.reply(menu_text)
+        await message.reply("🎛 **ADMIN PANEL**", reply_markup=admin_panel())
     else:
         await message.reply("👋 Salom! Men guruh uchun obuna tekshirish botiman.")
 
-@app.on_message(filters.command("addchannel") & filters.private)
-async def add_channel_cmd(client, message):
-    if message.from_user.id not in ADMIN_IDS:
-        await message.reply("❌ Sizda admin huquqi yo'q!")
+@app.on_callback_query(filters.regex("^add_channel$"))
+async def add_channel_callback(client, callback):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
-    
-    user_states[message.from_user.id] = "waiting_channel_add"
-    await message.reply("📝 **Kanal qo'shish**\n\nKanal username (@kanal), ID (-100...) yoki link (https://t.me/kanal) yuboring:")
+    user_states[callback.from_user.id] = "waiting_channel_add"
+    await callback.edit_message_text("📝 **Kanal qo'shish**\n\nKanal username (@kanal), ID (-100...) yoki link (https://t.me/kanal) yuboring:", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
 
-@app.on_message(filters.command("delchannel") & filters.private)
-async def del_channel_cmd(client, message):
-    if message.from_user.id not in ADMIN_IDS:
-        await message.reply("❌ Sizda admin huquqi yo'q!")
+@app.on_callback_query(filters.regex("^del_channel$"))
+async def del_channel_callback(client, callback):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
-    
     if not data["channels"]:
-        await message.reply("❌ Hozircha kanallar qo'shilmagan!")
+        await callback.answer("❌ Hozircha kanallar qo'shilmagan!", show_alert=True)
         return
-    
-    user_states[message.from_user.id] = "waiting_channel_del"
+    user_states[callback.from_user.id] = "waiting_channel_del"
     text = "📋 **Kanallar ro'yxati:**\n\n"
     for i, (ch_id, ch_info) in enumerate(data["channels"].items(), 1):
         title = ch_info.get("title", "Noma'lum kanal")
         ch_type = "🔒 Yopiq" if ch_info.get("is_private") else "🔓 Ochiq"
         text += f"{i}. {ch_type} **{title}**\n   `{ch_id}`\n\n"
     text += "\nO'chirish uchun kanal ID yoki nomini yuboring:"
-    await message.reply(text)
+    await callback.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
 
-@app.on_message(filters.command("channels") & filters.private)
-async def list_channels_cmd(client, message):
-    if message.from_user.id not in ADMIN_IDS:
-        await message.reply("❌ Sizda admin huquqi yo'q!")
+@app.on_callback_query(filters.regex("^list_channels$"))
+async def list_channels_callback(client, callback):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
-    
     if not data["channels"]:
-        await message.reply("❌ Hozircha kanallar qo'shilmagan!")
+        await callback.answer("❌ Hozircha kanallar qo'shilmagan!", show_alert=True)
         return
-    
     text = "📋 **Kanallar ro'yxati:**\n\n"
     for i, (ch_id, ch_info) in enumerate(data["channels"].items(), 1):
         title = ch_info.get("title", "Noma'lum kanal")
@@ -170,24 +165,28 @@ async def list_channels_cmd(client, message):
         if username:
             text += f"   @{username}\n"
         text += f"   `{ch_id}`\n\n"
-    await message.reply(text)
+    await callback.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
 
-@app.on_message(filters.command("stats") & filters.private)
-async def stats_cmd(client, message):
-    if message.from_user.id not in ADMIN_IDS:
-        await message.reply("❌ Sizda admin huquqi yo'q!")
+@app.on_callback_query(filters.regex("^stats$"))
+async def stats_callback(client, callback):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
-    
-    text = f"""
-📊 **Statistika:**
+    text = f"""📊 **Statistika:**
 
 🚫 O'chirilgan xabarlar: {data['stats'].get('blocked', 0)}
 ✅ Tekshirilgan foydalanuvchilar: {data['stats'].get('checked', 0)}
-📣 Kanallar soni: {len(data.get('channels', {}))}
-    """
-    await message.reply(text)
+📣 Kanallar soni: {len(data.get('channels', {}))}"""
+    await callback.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
 
-@app.on_message(filters.private & filters.text & ~filters.command(["start", "addchannel", "delchannel", "channels", "stats"]))
+@app.on_callback_query(filters.regex("^admin_panel$"))
+async def admin_panel_callback(client, callback):
+    if callback.from_user.id not in ADMIN_IDS:
+        await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
+        return
+    await callback.edit_message_text("🎛 **ADMIN PANEL**", reply_markup=admin_panel())
+
+@app.on_message(filters.private & filters.text & ~filters.command(["start"]))
 async def text_handler(client, message):
     if message.from_user.id not in ADMIN_IDS:
         return
@@ -206,7 +205,7 @@ async def text_handler(client, message):
             title = data["channels"][key].get("title", "Noma'lum")
             del data["channels"][key]
             save_data(data)
-            await message.reply(f"✅ Kanal o'chirildi: **{title}**")
+            await message.reply(f"✅ Kanal o'chirildi: **{title}**", reply_markup=admin_panel())
         else:
             found = None
             for k, v in data["channels"].items():
@@ -217,9 +216,9 @@ async def text_handler(client, message):
                 title = data["channels"][found].get("title", "Noma'lum")
                 del data["channels"][found]
                 save_data(data)
-                await message.reply(f"✅ Kanal o'chirildi: **{title}**")
+                await message.reply(f"✅ Kanal o'chirildi: **{title}**", reply_markup=admin_panel())
             else:
-                await message.reply("❌ Bu kanal ro'yxatda yo'q!")
+                await message.reply("❌ Bu kanal ro'yxatda yo'q!", reply_markup=admin_panel())
         user_states.pop(user_id, None)
         return
     
@@ -227,7 +226,7 @@ async def text_handler(client, message):
         try:
             resolved = await resolve_chat_identifier(text)
             if not resolved:
-                await message.reply("❌ Kanal topilmadi. To'g'ri identifier yuboring.")
+                await message.reply("❌ Kanal topilmadi. To'g'ri identifier yuboring.", reply_markup=admin_panel())
                 user_states.pop(user_id, None)
                 return
             
@@ -248,9 +247,9 @@ async def text_handler(client, message):
             save_data(data)
             
             ch_type = "🔒 Yopiq" if is_private else "🔓 Ochiq"
-            await message.reply(f"✅ **Kanal qo'shildi!**\n\nNomi: **{title}**\nTuri: {ch_type}\nID: `{key}`")
+            await message.reply(f"✅ **Kanal qo'shildi!**\n\nNomi: **{title}**\nTuri: {ch_type}\nID: `{key}`", reply_markup=admin_panel())
         except Exception as e:
-            await message.reply(f"❌ Kanal qo'shishda xatolik: {str(e)}")
+            await message.reply(f"❌ Kanal qo'shishda xatolik: {str(e)}", reply_markup=admin_panel())
         user_states.pop(user_id, None)
         return
 
