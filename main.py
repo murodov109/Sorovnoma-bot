@@ -277,23 +277,67 @@ async def text_handler(client, message):
         return
     
     if state == "waiting_channel_add":
+        msg = await message.reply("⏳ Tekshirilmoqda...")
+        
         try:
             resolved = await resolve_chat_identifier(text)
             
             if not resolved:
-                await message.reply("❌ Kanal topilmadi yoki noto'g'ri format.\n\n**To'g'ri formatlar:**\n• Kanal ID: `-100xxxxxxxxx`\n• Username: `@kanal`\n• Havola: `https://t.me/kanal`", reply_markup=admin_panel())
+                await msg.edit_text("❌ Kanal topilmadi yoki noto'g'ri format.\n\n**To'g'ri formatlar:**\n• Kanal ID: `-100xxxxxxxxx`\n• Username: `@kanal`\n• Havola: `https://t.me/kanal`", reply_markup=admin_panel())
                 user_states.pop(user_id, None)
                 return
             
             if resolved.get("error"):
                 error_msg = resolved.get("message", "❌ Xatolik yuz berdi")
-                await message.reply(error_msg, reply_markup=admin_panel())
+                await msg.edit_text(error_msg, reply_markup=admin_panel())
                 user_states.pop(user_id, None)
                 return
             
             ch_id = resolved["id"]
             title = resolved.get("title") or "Kanal"
             username = resolved.get("username")
+            
+            await msg.edit_text(f"✅ Kanal topildi: **{title}**\n\n⏳ Admin huquqlari tekshirilmoqda...")
+            await asyncio.sleep(1)
+            
+            try:
+                me = await app.get_me()
+                bot_member = await app.get_chat_member(ch_id, me.id)
+                
+                if bot_member.status not in ["administrator", "creator"]:
+                    await msg.edit_text(
+                        f"❌ **Bot kanalda admin emas!**\n\n"
+                        f"📌 Kanal: **{title}**\n"
+                        f"🤖 Bot holati: `{bot_member.status}`\n\n"
+                        f"⚠️ **Qanday qilish kerak:**\n"
+                        f"1. Kanalga kiring\n"
+                        f"2. Kanal sozlamalariga o'ting\n"
+                        f"3. Administratorlar bo'limiga kiring\n"
+                        f"4. Botni admin qilib qo'shing\n"
+                        f"5. Barcha huquqlarni yoqing\n\n"
+                        f"Keyin qaytadan kanal ID ni yuboring!",
+                        reply_markup=admin_panel()
+                    )
+                    user_states.pop(user_id, None)
+                    return
+                
+                await msg.edit_text(f"✅ Bot admin!\n\n⏳ Kanal qo'shilmoqda...")
+                await asyncio.sleep(1)
+                
+            except Exception as e:
+                print(f"Admin check error: {e}")
+                await msg.edit_text(
+                    f"❌ **Bot kanalda yo'q!**\n\n"
+                    f"📌 Kanal: **{title}**\n"
+                    f"🆔 ID: `{ch_id}`\n\n"
+                    f"⚠️ **Qanday qilish kerak:**\n"
+                    f"1. Botni kanalga qo'shing\n"
+                    f"2. Botni admin qiling\n"
+                    f"3. Qaytadan ID ni yuboring",
+                    reply_markup=admin_panel()
+                )
+                user_states.pop(user_id, None)
+                return
             
             if username:
                 invite_link = f"https://t.me/{username}"
@@ -313,17 +357,18 @@ async def text_handler(client, message):
             save_data(data)
             
             ch_type = "🔒 Maxfiy" if is_private else "🔓 Ochiq"
-            await message.reply(
+            await msg.edit_text(
                 f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n"
                 f"📌 Nomi: **{title}**\n"
                 f"🔐 Turi: {ch_type}\n"
-                f"🆔 ID: `{key}`\n\n"
-                f"✅ Endi bot guruhda obunani tekshiradi!",
+                f"🆔 ID: `{key}`\n"
+                f"🤖 Bot admin: ✅\n\n"
+                f"Endi bot guruhda obunani tekshiradi!",
                 reply_markup=admin_panel()
             )
         except Exception as e:
             print(f"Add channel error: {e}")
-            await message.reply(f"❌ Xatolik: {str(e)}", reply_markup=admin_panel())
+            await msg.edit_text(f"❌ Xatolik: {str(e)}", reply_markup=admin_panel())
         user_states.pop(user_id, None)
         return
 
