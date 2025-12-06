@@ -61,7 +61,7 @@ async def resolve_chat_identifier(text):
         if text.startswith("https://t.me/+") or text.startswith("https://t.me/joinchat/"):
             return {
                 "error": "need_id",
-                "message": "Maxfiy kanal uchun ID yuboring!\n\nID olish:\n• Kanal postini @userinfobot ga forward qiling\n• ID: -100xxxxxxxxx ko'rinishida"
+                "message": "⚠️ Maxfiy kanal uchun ID yuboring!\n\n**ID olish:**\n• Kanal postini @userinfobot ga forward qiling\n• ID: `-100xxxxxxxxx` ko'rinishida"
             }
             
         elif text.startswith("https://t.me/"):
@@ -73,35 +73,7 @@ async def resolve_chat_identifier(text):
             chat = await app.get_chat(text)
         elif text.lstrip("-").isdigit():
             chat_id = int(text)
-            
-            try:
-                chat = await app.get_chat(chat_id)
-            except Exception as e:
-                print(f"Get chat error: {e}")
-                return {
-                    "error": "not_found",
-                    "message": "❌ Kanal topilmadi!\n\n⚠️ Botni avval kanalga qo'shing va admin qiling!"
-                }
-            
-            try:
-                me = await app.get_me()
-                bot_member = await app.get_chat_member(chat_id, me.id)
-                
-                if bot_member.status not in ["administrator", "creator"]:
-                    return {
-                        "error": "not_admin",
-                        "message": f"⚠️ Bot kanalda admin emas!\n\nBot holati: {bot_member.status}\n\n✅ Botni kanal adminiga qo'shing va quyidagi huquqlarni bering:\n• A'zolarni ko'rish\n• Xabarlarni ko'rish"
-                    }
-                
-                if hasattr(bot_member, 'privileges') and bot_member.privileges:
-                    if not bot_member.privileges.can_restrict_members:
-                        print("Warning: Bot cannot restrict members")
-            except Exception as e:
-                print(f"Check admin error: {e}")
-                return {
-                    "error": "check_failed",
-                    "message": f"❌ Bot huquqlarini tekshirib bo'lmadi!\n\nXatolik: {str(e)}\n\n✅ Botni kanal adminiga qo'shing va barcha huquqlarni bering!"
-                }
+            chat = await app.get_chat(chat_id)
         else:
             chat = await app.get_chat(text)
         
@@ -112,10 +84,7 @@ async def resolve_chat_identifier(text):
         }
     except Exception as e:
         print(f"Resolve error: {e}")
-        return {
-            "error": "unknown",
-            "message": f"❌ Xatolik: {str(e)}\n\n✅ Botni kanalga admin qilib qo'shing!"
-        }
+        return None
 
 async def check_subscription(user_id: int) -> bool:
     if not data.get("channels"):
@@ -297,45 +266,6 @@ async def text_handler(client, message):
             title = resolved.get("title") or "Kanal"
             username = resolved.get("username")
             
-            await msg.edit_text(f"✅ Kanal topildi: **{title}**\n\n⏳ Admin huquqlari tekshirilmoqda...")
-            await asyncio.sleep(1)
-            
-            try:
-                me = await app.get_me()
-                bot_member = await app.get_chat_member(ch_id, me.id)
-                bot_status = bot_member.status.value if hasattr(bot_member.status, 'value') else str(bot_member.status)
-                
-                if bot_status not in ["administrator", "creator"]:
-                    await msg.edit_text(
-                        f"❌ **Bot kanalda admin emas!**\n\n"
-                        f"📌 Kanal: **{title}**\n"
-                        f"🤖 Bot holati: `{bot_status}`\n\n"
-                        f"⚠️ **Kerakli amallar:**\n"
-                        f"1️⃣ Kanalga kiring\n"
-                        f"2️⃣ Sozlamalarga o'ting\n"
-                        f"3️⃣ Administratorlar → Botni admin qiling\n"
-                        f"4️⃣ Barcha huquqlarni yoqing\n\n"
-                        f"Keyin qaytadan kanal ID ni yuboring!",
-                        reply_markup=admin_panel()
-                    )
-                    user_states.pop(user_id, None)
-                    return
-                
-            except Exception as e:
-                print(f"Admin check error: {e}")
-                await msg.edit_text(
-                    f"❌ **Bot kanalda yo'q!**\n\n"
-                    f"📌 Kanal: **{title}**\n"
-                    f"🆔 ID: `{ch_id}`\n\n"
-                    f"⚠️ **Kerakli amallar:**\n"
-                    f"1️⃣ Botni kanalga qo'shing\n"
-                    f"2️⃣ Botni admin qiling\n"
-                    f"3️⃣ Qaytadan ID ni yuboring",
-                    reply_markup=admin_panel()
-                )
-                user_states.pop(user_id, None)
-                return
-            
             if username:
                 invite_link = f"https://t.me/{username}"
                 is_private = False
@@ -358,9 +288,8 @@ async def text_handler(client, message):
                 f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n"
                 f"📌 Nomi: **{title}**\n"
                 f"🔐 Turi: {ch_type}\n"
-                f"🆔 ID: `{key}`\n"
-                f"🤖 Bot admin: ✅\n\n"
-                f"✨ Endi bot guruhda obunani avtomatik tekshiradi!",
+                f"🆔 ID: `{key}`\n\n"
+                f"✨ Bot guruhda obunani tekshiradi!",
                 reply_markup=admin_panel()
             )
         except Exception as e:
