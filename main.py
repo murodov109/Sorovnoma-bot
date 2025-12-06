@@ -140,21 +140,16 @@ async def add_channel_callback(client, callback):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
-    user_states[callback.from_user.id] = "waiting_channel_add"
+    user_states[callback.from_user.id] = "waiting_channel_id"
     await callback.edit_message_text(
         "📝 **Kanal qo'shish**\n\n"
-        "**Maxfiy kanal uchun:**\n"
-        "1️⃣ Botni kanal adminiga qo'shing\n"
-        "2️⃣ Kanal ID ni yuboring: `-100xxxxxxxxx`\n"
-        "3️⃣ Kanal havolasini yuboring (ixtiyoriy)\n\n"
-        "**Ochiq kanal uchun:**\n"
-        "• Username: `@kanal`\n"
+        "**1-qadam:** Kanal ID ni yuboring\n\n"
+        "**Formatlar:**\n"
+        "• Maxfiy kanal ID: `-100xxxxxxxxx`\n"
+        "• Ochiq kanal: `@kanal`\n"
         "• Havola: `https://t.me/kanal`\n\n"
-        "**Format:**\n"
-        "`-1001234567890` yoki\n"
-        "`-1001234567890 https://t.me/+xxxxx`\n\n"
         "**ID qanday olish:**\n"
-        "• Kanal postini @userinfobot ga forward qiling",
+        "Kanal postini @userinfobot ga forward qiling",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]])
     )
 
@@ -206,12 +201,51 @@ async def stats_callback(client, callback):
 📣 Kanallar soni: {len(data.get('channels', {}))}"""
     await callback.edit_message_text(text, reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]]))
 
-@app.on_callback_query(filters.regex("^admin_panel$"))
-async def admin_panel_callback(client, callback):
+@app.on_callback_query(filters.regex("^confirm_add_channel$"))
+async def confirm_add_channel_callback(client, callback):
     if callback.from_user.id not in ADMIN_IDS:
         await callback.answer("❌ Sizda admin huquqi yo'q!", show_alert=True)
         return
-    await callback.edit_message_text("🎛 **ADMIN PANEL**", reply_markup=admin_panel())
+    
+    user_id = callback.from_user.id
+    state = user_states.get(user_id)
+    
+    if not isinstance(state, dict) or state.get("state") != "waiting_channel_link":
+        await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
+        return
+    
+    try:
+        ch_id = state["ch_id"]
+        title = state["title"]
+        username = state["username"]
+        
+        invite_link = f"https://t.me/{username}" if username else ""
+        is_private = False if username else True
+        
+        key = str(ch_id)
+        data["channels"][key] = {
+            "id": ch_id,
+            "title": title,
+            "username": username or "",
+            "invite_link": invite_link,
+            "is_private": is_private
+        }
+        save_data(data)
+        
+        ch_type = "🔒 Maxfiy" if is_private else "🔓 Ochiq"
+        await callback.edit_message_text(
+            f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n"
+            f"📌 Nomi: **{title}**\n"
+            f"🔐 Turi: {ch_type}\n"
+            f"🆔 ID: `{key}`\n"
+            f"🔗 Havola: {invite_link}\n\n"
+            f"✨ Bot guruhda obunani tekshiradi!",
+            reply_markup=admin_panel()
+        )
+        user_states.pop(user_id, None)
+    except Exception as e:
+        print(f"Confirm add channel error: {e}")
+        await callback.answer("❌ Xatolik yuz berdi", show_alert=True)
 
 @app.on_message(filters.private & filters.text & ~filters.command(["start"]))
 async def text_handler(client, message):
