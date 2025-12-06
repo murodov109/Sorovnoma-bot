@@ -145,10 +145,14 @@ async def add_channel_callback(client, callback):
         "📝 **Kanal qo'shish**\n\n"
         "**Maxfiy kanal uchun:**\n"
         "1️⃣ Botni kanal adminiga qo'shing\n"
-        "2️⃣ Kanal ID ni yuboring: `-100xxxxxxxxx`\n\n"
+        "2️⃣ Kanal ID ni yuboring: `-100xxxxxxxxx`\n"
+        "3️⃣ Kanal havolasini yuboring (ixtiyoriy)\n\n"
         "**Ochiq kanal uchun:**\n"
         "• Username: `@kanal`\n"
         "• Havola: `https://t.me/kanal`\n\n"
+        "**Format:**\n"
+        "`-1001234567890` yoki\n"
+        "`-1001234567890 https://t.me/+xxxxx`\n\n"
         "**ID qanday olish:**\n"
         "• Kanal postini @userinfobot ga forward qiling",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]])
