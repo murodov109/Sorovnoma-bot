@@ -73,19 +73,34 @@ async def resolve_chat_identifier(text):
             chat = await app.get_chat(text)
         elif text.lstrip("-").isdigit():
             chat_id = int(text)
-            chat = await app.get_chat(chat_id)
             
             try:
-                bot_member = await app.get_chat_member(chat_id, "me")
+                chat = await app.get_chat(chat_id)
+            except Exception as e:
+                print(f"Get chat error: {e}")
+                return {
+                    "error": "not_found",
+                    "message": "❌ Kanal topilmadi!\n\n⚠️ Botni avval kanalga qo'shing va admin qiling!"
+                }
+            
+            try:
+                me = await app.get_me()
+                bot_member = await app.get_chat_member(chat_id, me.id)
+                
                 if bot_member.status not in ["administrator", "creator"]:
                     return {
                         "error": "not_admin",
-                        "message": "⚠️ Botni kanal adminiga qo'shing!"
+                        "message": f"⚠️ Bot kanalda admin emas!\n\nBot holati: {bot_member.status}\n\n✅ Botni kanal adminiga qo'shing va quyidagi huquqlarni bering:\n• A'zolarni ko'rish\n• Xabarlarni ko'rish"
                     }
-            except:
+                
+                if hasattr(bot_member, 'privileges') and bot_member.privileges:
+                    if not bot_member.privileges.can_restrict_members:
+                        print("Warning: Bot cannot restrict members")
+            except Exception as e:
+                print(f"Check admin error: {e}")
                 return {
-                    "error": "not_member",
-                    "message": "⚠️ Botni avval kanalga qo'shing va admin qiling!"
+                    "error": "check_failed",
+                    "message": f"❌ Bot huquqlarini tekshirib bo'lmadi!\n\nXatolik: {str(e)}\n\n✅ Botni kanal adminiga qo'shing va barcha huquqlarni bering!"
                 }
         else:
             chat = await app.get_chat(text)
@@ -97,7 +112,10 @@ async def resolve_chat_identifier(text):
         }
     except Exception as e:
         print(f"Resolve error: {e}")
-        return None
+        return {
+            "error": "unknown",
+            "message": f"❌ Xatolik: {str(e)}\n\n✅ Botni kanalga admin qilib qo'shing!"
+        }
 
 async def check_subscription(user_id: int) -> bool:
     if not data.get("channels"):
@@ -115,13 +133,18 @@ async def check_subscription(user_id: int) -> bool:
             
             if status in ["member", "administrator", "creator", "owner"]:
                 continue
+            elif status == "restricted":
+                if hasattr(member, 'is_member') and member.is_member:
+                    continue
+                else:
+                    return False
             else:
                 return False
                 
         except UserNotParticipant:
             return False
         except Exception as e:
-            print(f"Check error for channel {ch_id}: {e}")
+            print(f"Check subscription error for channel {ch_id}, user {user_id}: {e}")
             return False
     
     return True
@@ -263,7 +286,8 @@ async def text_handler(client, message):
                 return
             
             if resolved.get("error"):
-                await message.reply(resolved.get("message", "❌ Xatolik yuz berdi"), reply_markup=admin_panel())
+                error_msg = resolved.get("message", "❌ Xatolik yuz berdi")
+                await message.reply(error_msg, reply_markup=admin_panel())
                 user_states.pop(user_id, None)
                 return
             
@@ -288,8 +312,15 @@ async def text_handler(client, message):
             }
             save_data(data)
             
-            ch_type = "🔒 Yopiq" if is_private else "🔓 Ochiq"
-            await message.reply(f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n📌 Nomi: **{title}**\n🔐 Turi: {ch_type}\n🆔 ID: `{key}`", reply_markup=admin_panel())
+            ch_type = "🔒 Maxfiy" if is_private else "🔓 Ochiq"
+            await message.reply(
+                f"✅ **Kanal muvaffaqiyatli qo'shildi!**\n\n"
+                f"📌 Nomi: **{title}**\n"
+                f"🔐 Turi: {ch_type}\n"
+                f"🆔 ID: `{key}`\n\n"
+                f"✅ Endi bot guruhda obunani tekshiradi!",
+                reply_markup=admin_panel()
+            )
         except Exception as e:
             print(f"Add channel error: {e}")
             await message.reply(f"❌ Xatolik: {str(e)}", reply_markup=admin_panel())
