@@ -303,26 +303,23 @@ async def text_handler(client, message):
             try:
                 me = await app.get_me()
                 bot_member = await app.get_chat_member(ch_id, me.id)
+                bot_status = bot_member.status.value if hasattr(bot_member.status, 'value') else str(bot_member.status)
                 
-                if bot_member.status not in ["administrator", "creator"]:
+                if bot_status not in ["administrator", "creator"]:
                     await msg.edit_text(
                         f"❌ **Bot kanalda admin emas!**\n\n"
                         f"📌 Kanal: **{title}**\n"
-                        f"🤖 Bot holati: `{bot_member.status}`\n\n"
-                        f"⚠️ **Qanday qilish kerak:**\n"
-                        f"1. Kanalga kiring\n"
-                        f"2. Kanal sozlamalariga o'ting\n"
-                        f"3. Administratorlar bo'limiga kiring\n"
-                        f"4. Botni admin qilib qo'shing\n"
-                        f"5. Barcha huquqlarni yoqing\n\n"
+                        f"🤖 Bot holati: `{bot_status}`\n\n"
+                        f"⚠️ **Kerakli amallar:**\n"
+                        f"1️⃣ Kanalga kiring\n"
+                        f"2️⃣ Sozlamalarga o'ting\n"
+                        f"3️⃣ Administratorlar → Botni admin qiling\n"
+                        f"4️⃣ Barcha huquqlarni yoqing\n\n"
                         f"Keyin qaytadan kanal ID ni yuboring!",
                         reply_markup=admin_panel()
                     )
                     user_states.pop(user_id, None)
                     return
-                
-                await msg.edit_text(f"✅ Bot admin!\n\n⏳ Kanal qo'shilmoqda...")
-                await asyncio.sleep(1)
                 
             except Exception as e:
                 print(f"Admin check error: {e}")
@@ -330,10 +327,10 @@ async def text_handler(client, message):
                     f"❌ **Bot kanalda yo'q!**\n\n"
                     f"📌 Kanal: **{title}**\n"
                     f"🆔 ID: `{ch_id}`\n\n"
-                    f"⚠️ **Qanday qilish kerak:**\n"
-                    f"1. Botni kanalga qo'shing\n"
-                    f"2. Botni admin qiling\n"
-                    f"3. Qaytadan ID ni yuboring",
+                    f"⚠️ **Kerakli amallar:**\n"
+                    f"1️⃣ Botni kanalga qo'shing\n"
+                    f"2️⃣ Botni admin qiling\n"
+                    f"3️⃣ Qaytadan ID ni yuboring",
                     reply_markup=admin_panel()
                 )
                 user_states.pop(user_id, None)
@@ -363,7 +360,7 @@ async def text_handler(client, message):
                 f"🔐 Turi: {ch_type}\n"
                 f"🆔 ID: `{key}`\n"
                 f"🤖 Bot admin: ✅\n\n"
-                f"Endi bot guruhda obunani tekshiradi!",
+                f"✨ Endi bot guruhda obunani avtomatik tekshiradi!",
                 reply_markup=admin_panel()
             )
         except Exception as e:
