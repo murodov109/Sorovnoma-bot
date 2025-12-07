@@ -99,34 +99,46 @@ async def check_subscription(user_id: int):
         return True, []
     
     missing = []
+    all_channels = list(data["channels"].values())
     
-    for key, ch in data["channels"].items():
+    for ch in all_channels:
         ch_id = ch.get("id")
         if not ch_id:
             continue
         
+        is_member = False
+        
         try:
             member = await app.get_chat_member(ch_id, user_id)
+            status = str(member.status)
             
-            if member.status in ["creator", "administrator", "member"]:
-                continue
-            
-            missing.append(ch)
+            if status in ["ChatMemberStatus.OWNER", "ChatMemberStatus.ADMINISTRATOR", "ChatMemberStatus.MEMBER"]:
+                is_member = True
+            elif "owner" in status.lower() or "creator" in status.lower():
+                is_member = True
+            elif "administrator" in status.lower() or "admin" in status.lower():
+                is_member = True
+            elif "member" in status.lower():
+                is_member = True
             
         except UserNotParticipant:
-            missing.append(ch)
+            is_member = False
         except FloodWait as e:
-            await asyncio.sleep(min(e.value, 5))
+            await asyncio.sleep(min(e.value, 3))
             try:
                 member = await app.get_chat_member(ch_id, user_id)
-                if member.status not in ["creator", "administrator", "member"]:
-                    missing.append(ch)
+                status = str(member.status)
+                if any(x in status.lower() for x in ["owner", "creator", "administrator", "admin", "member"]):
+                    is_member = True
             except:
-                missing.append(ch)
+                is_member = False
         except ChatAdminRequired:
-            pass
+            is_member = False
         except Exception:
-            pass
+            is_member = False
+        
+        if not is_member:
+            missing.append(ch)
     
     return len(missing) == 0, missing
 
@@ -146,7 +158,7 @@ async def lift_restriction(chat_id: int, user_id: int):
                 can_pin_messages=False
             )
         )
-    except Exception:
+    except:
         pass
 
 async def restrict_user(chat_id: int, user_id: int):
@@ -165,7 +177,7 @@ async def restrict_user(chat_id: int, user_id: int):
                 can_pin_messages=False
             )
         )
-    except Exception:
+    except:
         pass
 
 @app.on_message(filters.command("start") & filters.private)
@@ -193,7 +205,8 @@ async def add_channel_callback(_, c):
         "Quyidagi formatlardan birini yuboring:\n\n"
         "1️⃣ Ochiq kanal:\n`@kanalUsername`\n`https://t.me/kanalUsername`\n\n"
         "2️⃣ Maxfiy kanal (ID va havola):\n`-1001234567890|https://t.me/+xxxx`\n\n"
-        "3️⃣ Faqat ID:\n`-1001234567890`",
+        "3️⃣ Faqat ID:\n`-1001234567890`\n\n"
+        "⚠️ **MUHIM:** Bot kanallarda admin bo'lishi kerak!",
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]])
     )
 
@@ -317,7 +330,8 @@ async def private_text(_, m):
                     f"✅ **Kanal qo'shildi!**\n\n"
                     f"📣 Nomi: {title}\n"
                     f"🔗 Havola: {link_part}\n"
-                    f"🆔 ID: `{key}`",
+                    f"🆔 ID: `{key}`\n\n"
+                    f"⚠️ Bot bu kanalda admin bo'lishi kerak!",
                     reply_markup=admin_panel()
                 )
                 user_states.pop(uid, None)
@@ -354,7 +368,8 @@ async def private_text(_, m):
                 f"✅ **Kanal qo'shildi!**\n\n"
                 f"📣 Nomi: {title}\n"
                 f"🔗 Havola: {invite_link or 'Yo`q (Maxfiy kanal)'}\n"
-                f"🆔 ID: `{key}`",
+                f"🆔 ID: `{key}`\n\n"
+                f"⚠️ Bot bu kanalda admin bo'lishi kerak!",
                 reply_markup=admin_panel()
             )
         except Exception as e:
@@ -455,6 +470,12 @@ async def no_link_cb(_, c):
 
 if __name__ == "__main__":
     print("=" * 50)
-    print("Bot ishga tushdi!")
+    print("🚀 Bot ishga tushdi!")
     print("=" * 50)
+    print("\n⚠️ MUHIM ESLATMA:")
+    print("1. Bot guruhda ADMIN bo'lishi kerak")
+    print("2. Botga 'Restrict Members' huquqi bering")
+    print("3. Bot kanallarda ham ADMIN bo'lishi kerak")
+    print("4. Kanallarda 'View Members' huquqi yoqing")
+    print("\n" + "=" * 50 + "\n")
     app.run()
