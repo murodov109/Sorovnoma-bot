@@ -110,25 +110,23 @@ async def check_subscription(user_id: int):
             
             if member.status in ["creator", "administrator", "member"]:
                 continue
-            elif member.status == "restricted":
-                if getattr(member, "is_member", False):
-                    continue
             
             missing.append(ch)
             
         except UserNotParticipant:
             missing.append(ch)
         except FloodWait as e:
-            await asyncio.sleep(e.value)
+            await asyncio.sleep(min(e.value, 5))
             try:
                 member = await app.get_chat_member(ch_id, user_id)
                 if member.status not in ["creator", "administrator", "member"]:
                     missing.append(ch)
             except:
                 missing.append(ch)
-        except Exception as e:
-            print(f"Tekshirish xatosi: {e}")
-            continue
+        except ChatAdminRequired:
+            pass
+        except Exception:
+            pass
     
     return len(missing) == 0, missing
 
@@ -148,8 +146,8 @@ async def lift_restriction(chat_id: int, user_id: int):
                 can_pin_messages=False
             )
         )
-    except Exception as e:
-        print(f"Ruxsat berishda xato: {e}")
+    except Exception:
+        pass
 
 async def restrict_user(chat_id: int, user_id: int):
     try:
@@ -167,8 +165,8 @@ async def restrict_user(chat_id: int, user_id: int):
                 can_pin_messages=False
             )
         )
-    except Exception as e:
-        print(f"Cheklashda xato: {e}")
+    except Exception:
+        pass
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(_, m):
@@ -401,8 +399,8 @@ async def group_handler(_, m):
         
         try:
             await m.delete()
-        except Exception as e:
-            print(f"Xabar o'chirishda xato: {e}")
+        except:
+            pass
         
         data["stats"]["blocked"] = data["stats"].get("blocked", 0) + 1
         save_data(data)
@@ -418,12 +416,11 @@ async def group_handler(_, m):
                 text=text,
                 reply_markup=kb
             )
-            print(f"✅ Ogohlantirish yuborildi: {sent_msg.id}")
-        except Exception as e:
-            print(f"❌ Xabar yuborishda xato: {e}")
+        except:
+            pass
             
-    except Exception as e:
-        print(f"❌ Group handler xatosi: {e}")
+    except:
+        pass
 
 @app.on_callback_query(filters.regex("^check_sub$"))
 async def check_cb(_, c):
