@@ -357,53 +357,62 @@ async def private_text(_, m):
 
 @app.on_message(filters.group & ~filters.service)
 async def group_handler(_, m):
-    if not m.from_user:
-        return
-    
-    if m.from_user.id in ADMIN_IDS:
-        return
-    
-    if not data.get("channels"):
-        return
-    
-    data["stats"]["checked"] = data["stats"].get("checked", 0) + 1
-    save_data(data)
-    
-    ok, missing, errors = await check_subscription(m.from_user.id)
-    
-    if ok:
-        await lift_restriction(m.chat.id, m.from_user.id)
-        return
-    
     try:
-        await m.delete()
-    except Exception as e:
-        print(f"Xabar o'chirishda xato: {e}")
-    
-    data["stats"]["blocked"] = data["stats"].get("blocked", 0) + 1
-    save_data(data)
-    
-    text = random.choice(messages).format(user=m.from_user.mention)
-    kb = build_keyboard_for_channels(missing if missing else list(data["channels"].values()))
-    
-    try:
-        await app.restrict_chat_member(
-            chat_id=m.chat.id,
-            user_id=m.from_user.id,
-            permissions=ChatPermissions(
-                can_send_messages=False,
-                can_send_media_messages=False,
-                can_send_other_messages=False,
-                can_add_web_page_previews=False
+        if not m.from_user:
+            return
+        
+        if m.from_user.id in ADMIN_IDS:
+            return
+        
+        if not data.get("channels"):
+            return
+        
+        data["stats"]["checked"] = data["stats"].get("checked", 0) + 1
+        save_data(data)
+        
+        ok, missing, errors = await check_subscription(m.from_user.id)
+        
+        if ok:
+            await lift_restriction(m.chat.id, m.from_user.id)
+            return
+        
+        try:
+            await m.delete()
+        except Exception as e:
+            print(f"Xabar o'chirishda xato: {e}")
+        
+        data["stats"]["blocked"] = data["stats"].get("blocked", 0) + 1
+        save_data(data)
+        
+        try:
+            await app.restrict_chat_member(
+                chat_id=m.chat.id,
+                user_id=m.from_user.id,
+                permissions=ChatPermissions(
+                    can_send_messages=False,
+                    can_send_media_messages=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False
+                )
             )
-        )
+        except Exception as e:
+            print(f"Cheklashda xato: {e}")
+        
+        text = random.choice(messages).format(user=m.from_user.mention)
+        kb = build_keyboard_for_channels(missing if missing else list(data["channels"].values()))
+        
+        try:
+            sent_msg = await app.send_message(
+                chat_id=m.chat.id,
+                text=text,
+                reply_markup=kb
+            )
+            print(f"Xabar yuborildi: {sent_msg.id}")
+        except Exception as e:
+            print(f"Xabar yuborishda xato: {e}")
+            
     except Exception as e:
-        print(f"Cheklashda xato: {e}")
-    
-    try:
-        await m.chat.send_message(text, reply_markup=kb)
-    except Exception as e:
-        print(f"Xabar yuborishda xato: {e}")
+        print(f"Group handler da umumiy xato: {e}")
 
 @app.on_callback_query(filters.regex("^check_sub$"))
 async def check_cb(_, c):
