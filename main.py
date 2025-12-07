@@ -105,81 +105,32 @@ async def check_subscription(user_id: int):
         if not ch_id:
             continue
         
-        is_subscribed = False
-        max_retries = 3
-        retry_count = 0
-        
-        while retry_count < max_retries and not is_subscribed:
+        try:
+            member = await app.get_chat_member(ch_id, user_id)
+            
+            if member.status in ["creator", "administrator", "member"]:
+                continue
+            elif member.status == "restricted":
+                if getattr(member, "is_member", False):
+                    continue
+            
+            missing.append(ch)
+            
+        except UserNotParticipant:
+            missing.append(ch)
+        except FloodWait as e:
+            await asyncio.sleep(e.value)
             try:
                 member = await app.get_chat_member(ch_id, user_id)
-                status = member.status
-                
-                if status in ["member", "administrator", "creator"]:
-                    is_subscribed = True
-                elif status == "restricted":
-                    if hasattr(member, "is_member") and member.is_member:
-                        is_subscribed = True
-                    else:
-                        is_subscribed = False
-                elif status == "left" or status == "kicked":
-                    is_subscribed = False
-                else:
-                    is_subscribed = False
-                
-                break
-                    
-            except UserNotParticipant:
-                is_subscribed = False
-                break
-                
-            except ChatAdminRequired:
-                print(f"⚠️ Bot {ch.get('title', 'Kanal')} kanalida admin emas yoki ruxsati yetarli emas!")
-                is_subscribed = True
-                break
-                
-            except FloodWait as e:
-                wait_time = min(e.value, 10)
-                print(f"⏳ FloodWait: {wait_time} soniya kutilmoqda...")
-                await asyncio.sleep(wait_time)
-                retry_count += 1
-                if retry_count >= max_retries:
-                    print(f"⚠️ FloodWait: maksimal urinishlar soni ({max_retries}) tugadi, foydalanuvchi obuna deb hisoblanadi")
-                    is_subscribed = True
-                continue
-                
-            except Exception as e:
-                error_msg = str(e).lower()
-                
-                if "user not found" in error_msg or "user_id_invalid" in error_msg:
-                    print(f"⚠️ Foydalanuvchi topilmadi (ID: {user_id})")
-                    is_subscribed = True
-                    break
-                
-                if "chat not found" in error_msg or "channel_invalid" in error_msg or "channel_private" in error_msg:
-                    print(f"⚠️ Kanal topilmadi yoki bot a'zo emas: {ch.get('title', 'Kanal')} (ID: {ch_id})")
-                    is_subscribed = True
-                    break
-                
-                if "peer_id_invalid" in error_msg:
-                    print(f"⚠️ Noto'g'ri kanal ID: {ch.get('title', 'Kanal')} (ID: {ch_id})")
-                    is_subscribed = True
-                    break
-                
-                retry_count += 1
-                if retry_count >= max_retries:
-                    print(f"❌ Tekshirish xatosi ({ch.get('title', 'Kanal')}): {e}")
-                    print(f"⚠️ Maksimal urinishlar soni tugadi, foydalanuvchi obuna deb hisoblanadi")
-                    is_subscribed = True
-                else:
-                    await asyncio.sleep(1)
-                    continue
-        
-        if not is_subscribed:
-            missing.append(ch)
+                if member.status not in ["creator", "administrator", "member"]:
+                    missing.append(ch)
+            except:
+                missing.append(ch)
+        except Exception as e:
+            print(f"Tekshirish xatosi: {e}")
+            continue
     
-    is_fully_subscribed = len(missing) == 0
-    
-    return is_fully_subscribed, missing
+    return len(missing) == 0, missing
 
 async def lift_restriction(chat_id: int, user_id: int):
     try:
