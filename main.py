@@ -96,37 +96,46 @@ async def resolve_chat_identifier(text):
 
 async def check_subscription(user_id: int):
     if not data.get("channels"):
-        return True, [], []
+        return True, []
     
     missing = []
-    errors = []
     
     for key, ch in data["channels"].items():
         ch_id = ch.get("id")
         if not ch_id:
             continue
         
+        is_subscribed = False
+        
         try:
             member = await app.get_chat_member(ch_id, user_id)
-            status = str(getattr(member, "status", ""))
+            status = member.status
             
-            if status in ("member", "administrator", "creator", "owner"):
-                continue
-            if status == "restricted" and getattr(member, "is_member", False):
-                continue
-            
-            missing.append(ch)
+            if status in ["member", "administrator", "creator"]:
+                is_subscribed = True
+            elif status == "restricted":
+                if hasattr(member, "is_member") and member.is_member:
+                    is_subscribed = True
+                    
         except UserNotParticipant:
-            missing.append(ch)
+            is_subscribed = False
         except ChatAdminRequired:
-            errors.append({"channel": ch, "error": "bot_needs_admin"})
+            print(f"⚠️ Bot {ch.get('title')} kanalida admin emas!")
+            is_subscribed = False
         except FloodWait as e:
+            print(f"⏳ FloodWait: {e.value} soniya kutish kerak")
             await asyncio.sleep(e.value)
-            missing.append(ch)
+            is_subscribed = False
         except Exception as e:
-            errors.append({"channel": ch, "error": str(e)})
+            print(f"❌ Tekshirish xatosi ({ch.get('title')}): {e}")
+            is_subscribed = False
+        
+        if not is_subscribed:
+            missing.append(ch)
     
-    return (len(missing) == 0), missing, errors
+    is_fully_subscribed = len(missing) == 0
+    
+    return is_fully_subscribed, missing
 
 async def lift_restriction(chat_id: int, user_id: int):
     try:
@@ -146,6 +155,25 @@ async def lift_restriction(chat_id: int, user_id: int):
         )
     except Exception as e:
         print(f"Ruxsat berishda xato: {e}")
+
+async def restrict_user(chat_id: int, user_id: int):
+    try:
+        await app.restrict_chat_member(
+            chat_id=chat_id,
+            user_id=user_id,
+            permissions=ChatPermissions(
+                can_send_messages=False,
+                can_send_media_messages=False,
+                can_send_other_messages=False,
+                can_add_web_page_previews=False,
+                can_send_polls=False,
+                can_change_info=False,
+                can_invite_users=False,
+                can_pin_messages=False
+            )
+        )
+    except Exception as e:
+        print(f"Cheklashda xato: {e}")
 
 @app.on_message(filters.command("start") & filters.private)
 async def start_handler(_, m):
@@ -370,9 +398,9 @@ async def group_handler(_, m):
         data["stats"]["checked"] = data["stats"].get("checked", 0) + 1
         save_data(data)
         
-        ok, missing, errors = await check_subscription(m.from_user.id)
+        is_subscribed, missing = await check_subscription(m.from_user.id)
         
-        if ok:
+        if is_subscribed:
             await lift_restriction(m.chat.id, m.from_user.id)
             return
         
@@ -384,19 +412,7 @@ async def group_handler(_, m):
         data["stats"]["blocked"] = data["stats"].get("blocked", 0) + 1
         save_data(data)
         
-        try:
-            await app.restrict_chat_member(
-                chat_id=m.chat.id,
-                user_id=m.from_user.id,
-                permissions=ChatPermissions(
-                    can_send_messages=False,
-                    can_send_media_messages=False,
-                    can_send_other_messages=False,
-                    can_add_web_page_previews=False
-                )
-            )
-        except Exception as e:
-            print(f"Cheklashda xato: {e}")
+        await restrict_user(m.chat.id, m.from_user.id)
         
         text = random.choice(messages).format(user=m.from_user.mention)
         kb = build_keyboard_for_channels(missing if missing else list(data["channels"].values()))
@@ -407,21 +423,21 @@ async def group_handler(_, m):
                 text=text,
                 reply_markup=kb
             )
-            print(f"Xabar yuborildi: {sent_msg.id}")
+            print(f"✅ Ogohlantirish yuborildi: {sent_msg.id}")
         except Exception as e:
-            print(f"Xabar yuborishda xato: {e}")
+            print(f"❌ Xabar yuborishda xato: {e}")
             
     except Exception as e:
-        print(f"Group handler da umumiy xato: {e}")
+        print(f"❌ Group handler xatosi: {e}")
 
 @app.on_callback_query(filters.regex("^check_sub$"))
 async def check_cb(_, c):
     uid = c.from_user.id
     chat = c.message.chat if c.message else None
     
-    ok, missing, errors = await check_subscription(uid)
+    is_subscribed, missing = await check_subscription(uid)
     
-    if ok:
+    if is_subscribed:
         if chat:
             await lift_restriction(chat.id, uid)
         
