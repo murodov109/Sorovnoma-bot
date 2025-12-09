@@ -34,7 +34,7 @@ messages = [
     "🤗 Assalomu alaykum {user}! Iltimos kanallarga qo'shilish so'rovi yuboring!",
     "✨ {user}, kanallar tugmasiga bosib so'rov yuboring, keyin suhbat davom etadi!",
     "🎯 {user}, kanallar juda qiziq! So'rov yuboring!",
-    "🔥 Hey {user}! Har bir kanal tugmasiga bosing!",
+    "🔥 Hey {user}! Har bir kanal uchun so'rov yuboring!",
     "💫 {user}, siz ajoyib odamsiz! Kanallarga so'rov yuboring!",
     "🚀 Do'stim {user}, kanallarimizda foydali ma'lumotlar bor. So'rov yuboring!",
     "🌟 {user}, guruhda yozish uchun kanallarga so'rov yuborish kerak!",
@@ -55,10 +55,28 @@ def build_keyboard_for_channels(ch_list):
     for ch in ch_list:
         title = ch.get("title", "Kanal")
         ch_id = ch.get("id")
+        username = ch.get("username", "")
+        invite_link = ch.get("invite_link", "")
         
         if ch_id:
+            if username:
+                buttons.append([InlineKeyboardButton(
+                    f"📣 {title}", 
+                    url=f"https://t.me/{username}"
+                )])
+            elif invite_link:
+                buttons.append([InlineKeyboardButton(
+                    f"📣 {title}", 
+                    url=invite_link
+                )])
+            else:
+                buttons.append([InlineKeyboardButton(
+                    f"📣 {title}", 
+                    callback_data=f"show_channel_{ch_id}"
+                )])
+            
             buttons.append([InlineKeyboardButton(
-                f"📣 {title} - So'rov yuborish", 
+                "➕ Qo'shilish so'rovini yuborish", 
                 callback_data=f"join_request_{ch_id}"
             )])
     
@@ -280,6 +298,31 @@ async def stats_callback(_, c):
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]])
     )
 
+@app.on_callback_query(filters.regex("^show_channel_"))
+async def show_channel_callback(_, c):
+    try:
+        channel_id = int(c.data.split("_")[2])
+        
+        channel_info = None
+        for ch in data["channels"].values():
+            if ch.get("id") == channel_id:
+                channel_info = ch
+                break
+        
+        if not channel_info:
+            await c.answer("❌ Kanal topilmadi!", show_alert=True)
+            return
+        
+        await c.answer(
+            f"📣 Kanal: {channel_info.get('title', 'Kanal')}\n\n"
+            f"💡 Qo'shilish so'rovini yuborish uchun pastdagi tugmani bosing!",
+            show_alert=True
+        )
+        
+    except Exception as e:
+        print(f"Show channel xatosi: {e}")
+        await c.answer("❌ Xatolik yuz berdi!", show_alert=True)
+
 @app.on_callback_query(filters.regex("^join_request_"))
 async def join_request_callback(_, c):
     try:
@@ -320,6 +363,7 @@ async def join_request_callback(_, c):
             
             await c.answer(
                 f"✅ Qo'shilish so'rovi yuborildi!\n\n"
+                f"📣 Kanal: {channel_info.get('title', 'Kanal')}\n\n"
                 f"Kanal adminlari tasdiqlashini kuting.",
                 show_alert=True
             )
@@ -348,11 +392,30 @@ async def join_request_callback(_, c):
                 await lift_restriction(c.message.chat.id, user_id)
         except Exception as e:
             print(f"Join request xatosi: {e}")
-            await c.answer(
-                "❌ So'rov yuborishda xatolik!\n\n"
-                "Iltimos qo'lda kanal linkiga o'ting va so'rov yuboring.",
-                show_alert=True
-            )
+            
+            username = channel_info.get("username", "")
+            invite_link = channel_info.get("invite_link", "")
+            
+            if username:
+                link = f"https://t.me/{username}"
+            elif invite_link:
+                link = invite_link
+            else:
+                link = None
+            
+            if link:
+                await c.answer(
+                    f"📣 Kanal: {channel_info.get('title', 'Kanal')}\n\n"
+                    f"Havola: {link}\n\n"
+                    f"Kanalga o'ting va qo'shilish so'rovini yuboring!",
+                    show_alert=True
+                )
+            else:
+                await c.answer(
+                    "❌ So'rov yuborishda xatolik!\n\n"
+                    "Iltimos admin bilan bog'laning.",
+                    show_alert=True
+                )
             
     except Exception as e:
         print(f"Callback xatosi: {e}")
@@ -520,9 +583,10 @@ if __name__ == "__main__":
     print("=" * 50)
     print("\n✅ IMKONIYATLAR:")
     print("1. Xabarlarni tekshirish va o'chirish")
-    print("2. Kanal tugmasiga bosilganda so'rov yuborish")
-    print("3. So'rov yuborilgach guruhda yozish ruxsati")
-    print("4. Kanal adminlari so'rovlarni ko'radi")
+    print("2. Kanal nomiga bosilsa - kanal ochiladi")
+    print("3. 'Qo'shilish so'rovi' tugmasi - so'rov yuboradi")
+    print("4. So'rov yuborilgach - guruhda yozish ruxsati")
+    print("5. Kanal adminlari - tepada so'rovlar ko'rinadi")
     print("\n⚠️ MUHIM:")
     print("• Bot guruhda admin bo'lishi kerak")
     print("• Bot kanallarda admin bo'lishi kerak")
