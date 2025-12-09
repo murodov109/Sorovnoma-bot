@@ -5,7 +5,7 @@ import random
 from datetime import datetime, timedelta
 from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton, ChatPermissions
-from pyrogram.errors import UserNotParticipant, ChatAdminRequired, FloodWait
+from pyrogram.errors import UserNotParticipant, ChatAdminRequired, FloodWait, UserAlreadyParticipant
 
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "")
@@ -21,7 +21,7 @@ def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
             return json.load(f)
-    return {"channels": {}, "stats": {"blocked": 0, "checked": 0}}
+    return {"channels": {}, "stats": {"blocked": 0, "checked": 0, "requests_sent": 0}}
 
 def save_data(d):
     with open(DATA_FILE, "w", encoding="utf-8") as f:
@@ -30,16 +30,16 @@ def save_data(d):
 data = load_data()
 
 messages = [
-    "😊 Salom {user}! Kanallarimizga obuna bo'lsangiz, guruhda erkin suhbatlashishingiz mumkin!",
-    "🤗 Assalomu alaykum {user}! Iltimos avval kanallarimizga a'zo bo'ling, keyin yozamiz!",
-    "✨ {user}, kanallarimizga qo'shiling, keyin suhbat davom etadi!",
-    "🎯 {user}, kanallar juda qiziq! Obuna bo'ling!",
-    "🔥 Hey {user}! Obuna bo'lish 5 soniya!",
-    "💫 {user}, siz ajoyib odamsiz! Endi kanalga ham obuna bo'ling!",
-    "🚀 Do'stim {user}, kanallarimizda foydali ma'lumotlar bor. Obuna bo'ling!",
-    "🌟 {user}, guruhda yozish uchun kanalga obuna bo'lish kerak!",
-    "💎 {user}, siz muhim a'zomiz! Kanalga qo'shiling!",
-    "🎉 {user}, kanallarimizda yangiliklar kutmoqda! Obuna bo'ling!"
+    "😊 Salom {user}! Quyidagi kanallarga qo'shilish so'rovi yuboring, keyin guruhda erkin yozishingiz mumkin!",
+    "🤗 Assalomu alaykum {user}! Iltimos kanallarga qo'shilish so'rovi yuboring!",
+    "✨ {user}, kanallar tugmasiga bosib so'rov yuboring, keyin suhbat davom etadi!",
+    "🎯 {user}, kanallar juda qiziq! So'rov yuboring!",
+    "🔥 Hey {user}! Har bir kanal tugmasiga bosing!",
+    "💫 {user}, siz ajoyib odamsiz! Kanallarga so'rov yuboring!",
+    "🚀 Do'stim {user}, kanallarimizda foydali ma'lumotlar bor. So'rov yuboring!",
+    "🌟 {user}, guruhda yozish uchun kanallarga so'rov yuborish kerak!",
+    "💎 {user}, siz muhim a'zomiz! Kanallarga qo'shiling!",
+    "🎉 {user}, kanallarimizda yangiliklar kutmoqda! So'rov yuboring!"
 ]
 
 def admin_panel():
@@ -54,17 +54,14 @@ def build_keyboard_for_channels(ch_list):
     buttons = []
     for ch in ch_list:
         title = ch.get("title", "Kanal")
-        link = ch.get("invite_link", "")
-        username = ch.get("username", "")
+        ch_id = ch.get("id")
         
-        if link:
-            buttons.append([InlineKeyboardButton(f"📣 {title}", url=link)])
-        elif username:
-            buttons.append([InlineKeyboardButton(f"📣 {title}", url=f"https://t.me/{username}")])
-        else:
-            buttons.append([InlineKeyboardButton(f"📣 {title}", callback_data="no_link")])
+        if ch_id:
+            buttons.append([InlineKeyboardButton(
+                f"📣 {title} - So'rov yuborish", 
+                callback_data=f"join_request_{ch_id}"
+            )])
     
-    buttons.append([InlineKeyboardButton("🔄 Obunani tekshirish", callback_data="check_sub")])
     return InlineKeyboardMarkup(buttons)
 
 async def resolve_chat_identifier(text):
@@ -269,17 +266,97 @@ async def stats_callback(_, c):
     
     blocked = data["stats"].get("blocked", 0)
     checked = data["stats"].get("checked", 0)
+    requests_sent = data["stats"].get("requests_sent", 0)
     channels_count = len(data.get("channels", {}))
     
     text = "📊 **Statistika:**\n\n"
     text += f"🔒 To'xtatilgan xabarlar: **{blocked}**\n"
     text += f"✅ Tekshirilgan xabarlar: **{checked}**\n"
+    text += f"📤 Yuborilgan so'rovlar: **{requests_sent}**\n"
     text += f"📣 Kanallar soni: **{channels_count}**\n"
     
     await c.edit_message_text(
         text,
         reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_panel")]])
     )
+
+@app.on_callback_query(filters.regex("^join_request_"))
+async def join_request_callback(_, c):
+    try:
+        channel_id = int(c.data.split("_")[2])
+        user_id = c.from_user.id
+        
+        channel_info = None
+        for ch in data["channels"].values():
+            if ch.get("id") == channel_id:
+                channel_info = ch
+                break
+        
+        if not channel_info:
+            await c.answer("❌ Kanal topilmadi!", show_alert=True)
+            return
+        
+        try:
+            member = await app.get_chat_member(channel_id, user_id)
+            status = str(member.status)
+            
+            if any(x in status.lower() for x in ["owner", "creator", "administrator", "admin", "member"]):
+                await c.answer("✅ Siz allaqachon bu kanalda a'zosiz!", show_alert=True)
+                
+                if c.message and c.message.chat:
+                    await lift_restriction(c.message.chat.id, user_id)
+                
+                return
+        except UserNotParticipant:
+            pass
+        except:
+            pass
+        
+        try:
+            invite_link = await app.create_chat_invite_link(
+                channel_id,
+                creates_join_request=True
+            )
+            
+            await c.answer(
+                f"✅ Qo'shilish so'rovi yuborildi!\n\n"
+                f"Kanal adminlari tasdiqlashini kuting.",
+                show_alert=True
+            )
+            
+            data["stats"]["requests_sent"] = data["stats"].get("requests_sent", 0) + 1
+            save_data(data)
+            
+            if c.message and c.message.chat:
+                await lift_restriction(c.message.chat.id, user_id)
+            
+            try:
+                await app.send_message(
+                    user_id,
+                    f"📤 **Qo'shilish so'rovi yuborildi!**\n\n"
+                    f"📣 Kanal: {channel_info.get('title', 'Kanal')}\n\n"
+                    f"✅ Kanal adminlari sizning so'rovingizni ko'rib chiqadi.\n"
+                    f"⏳ Tasdiqlashni kuting!\n\n"
+                    f"💡 So'rovingiz tasdiqlangach, guruhda erkin yozishingiz mumkin."
+                )
+            except:
+                pass
+                
+        except UserAlreadyParticipant:
+            await c.answer("✅ Siz allaqachon bu kanalda a'zosiz!", show_alert=True)
+            if c.message and c.message.chat:
+                await lift_restriction(c.message.chat.id, user_id)
+        except Exception as e:
+            print(f"Join request xatosi: {e}")
+            await c.answer(
+                "❌ So'rov yuborishda xatolik!\n\n"
+                "Iltimos qo'lda kanal linkiga o'ting va so'rov yuboring.",
+                show_alert=True
+            )
+            
+    except Exception as e:
+        print(f"Callback xatosi: {e}")
+        await c.answer("❌ Xatolik yuz berdi!", show_alert=True)
 
 @app.on_message(filters.private & filters.text & ~filters.command("start"))
 async def private_text(_, m):
@@ -437,45 +514,18 @@ async def group_handler(_, m):
     except:
         pass
 
-@app.on_callback_query(filters.regex("^check_sub$"))
-async def check_cb(_, c):
-    uid = c.from_user.id
-    chat = c.message.chat if c.message else None
-    
-    is_subscribed, missing = await check_subscription(uid)
-    
-    if is_subscribed:
-        if chat:
-            await lift_restriction(chat.id, uid)
-        
-        await c.answer("✅ Obuna tasdiqlandi! Endi yozishingiz mumkin.", show_alert=True)
-        
-        try:
-            await c.message.delete()
-        except:
-            pass
-        return
-    
-    kb = build_keyboard_for_channels(missing if missing else list(data["channels"].values()))
-    await c.answer("❌ Hali barcha kanallarga obuna bo'lmagansiz!", show_alert=True)
-    
-    try:
-        await c.message.edit_reply_markup(kb)
-    except:
-        pass
-
-@app.on_callback_query(filters.regex("^no_link$"))
-async def no_link_cb(_, c):
-    await c.answer("⚠️ Bu kanal uchun havola mavjud emas.", show_alert=True)
-
 if __name__ == "__main__":
     print("=" * 50)
     print("🚀 Bot ishga tushdi!")
     print("=" * 50)
-    print("\n⚠️ MUHIM ESLATMA:")
-    print("1. Bot guruhda ADMIN bo'lishi kerak")
-    print("2. Botga 'Restrict Members' huquqi bering")
-    print("3. Bot kanallarda ham ADMIN bo'lishi kerak")
-    print("4. Kanallarda 'View Members' huquqi yoqing")
+    print("\n✅ IMKONIYATLAR:")
+    print("1. Xabarlarni tekshirish va o'chirish")
+    print("2. Kanal tugmasiga bosilganda so'rov yuborish")
+    print("3. So'rov yuborilgach guruhda yozish ruxsati")
+    print("4. Kanal adminlari so'rovlarni ko'radi")
+    print("\n⚠️ MUHIM:")
+    print("• Bot guruhda admin bo'lishi kerak")
+    print("• Bot kanallarda admin bo'lishi kerak")
+    print("• 'Invite Users via Link' huquqi yoqilgan bo'lsin")
     print("\n" + "=" * 50 + "\n")
     app.run()
